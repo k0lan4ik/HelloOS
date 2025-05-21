@@ -112,69 +112,8 @@ org 100h
     mov   cx, 4
     repe  cmpsb
     jne   @F
-    mov   cx, 20
-.lsloop:
-    push  cx
-    mov   ax, 20
-    sub   ax, cx
-    mov   di, FileName
-    mov   ch, $06
+    mov   ch, $08
     int   42h
-    cmp   cl, $F0
-    je    .lsskip
-    cmp   cl, $10
-    je    .Fold
-    mov    si, 11
-    mov    di, 11
-.lsLoopName:
-    cmp   byte[si + FileName],' '
-    je    .lssklpn
-    mov   cl, [si + FileName]
-    mov   [di + StringLS.FileName], cl
-    dec   di
-
-.lssklpn:
-    dec   si
-    cmp   si, 8
-    jne   .lsndot
-    mov   [di + StringLS.FileName], '.'
-    dec   di
-.lsndot:
-    test  si, si
-    jnz   .lsLoopName
-
-
-
-    jmp   .lss
-
-.Fold:
-    mov   cx, 11
-    mov   di, FileName
-    add   di, 11
-    mov   ax, ' '
-    std
-    repe  scasb
-    inc   di
-    inc   cx
-    mov   si, StringLS.FileName
-    add   si, 11
-    rep   movsb
-
-.lss:
-    mov   ah, $09
-    mov   dx, StringLS
-    int   21h
-    mov   al, ' '
-    mov   di, StringLS.FileName
-    mov   cx, 12
-    rep   stosb
-    mov   di, StringLS.Size
-    mov   cx, 10
-    rep   stosb
-
-.lsskip:
-    pop   cx
-    loop  .lsloop
 @@:
 .Ender:
     jmp  .workLoop
@@ -226,6 +165,7 @@ CommandF   db 'FONT'
 CommandEXE db 'EXECUTE'
 HelpStr    db 'Commands:',13,10,'  help - help about commands'\
                          ,13,10,'  exit - exit from this program'\
+                         ,13,10,'  list - show all in current directory'\
                          ,13,10,'  execute [file name] - execute program'\
                          ,13,10,'  font [file name] - switch font to font in file',13,10,'$'
 ErrLengStr db 'Lenght of filename need lower or equel 8 (12 whis .CAM)',13,10,'$'

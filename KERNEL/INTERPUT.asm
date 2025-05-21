@@ -145,6 +145,11 @@ INT42h:
      call    LoadFont
      jmp     .EndInt
 @@:
+     cmp     ch, $08
+     jne     @F
+     call    FileSys.ListDir
+     jmp     .EndInt
+@@:
 .EndInt:
      iret
 

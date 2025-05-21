@@ -326,16 +326,19 @@ proc FileSys.ScanDir uses ds si
      je     .Skip
      cmp     byte[si], $00
      je     .Skip
-     cmp     byte[si + 12], $02
+
+     mov     cl, [si + 11]
+     cmp     cl, $02
      je      .Skip
-     cmp     byte[si + 12], $08
+     cmp     cl, $08
      je      .Skip
-     cmp     byte[si + 12], $0F
+     cmp     cl, $0F
      je      .Skip
 
      mov     cx, 11
      cld
      rep     movsb
+
      mov     cl, [si]
      cmp     cl, $10
      je      @F
@@ -348,6 +351,75 @@ proc FileSys.ScanDir uses ds si
      mov     cl, $F0
 .EndProc:
      ret
+endp
+
+
+
+
+proc FileSys.ListDir uses es di ds si cx ax dx
+    mov     cx, [cs:FileSys.TableSeg]
+    mov     ds, cx
+    mov     cx, [ds:BPB_RootEntCnt]
+
+    mov     ax, 1
+    mov     di, .filelist_buffer
+
+.Loop:
+    push    ax cx di
+
+    push    cs
+    pop     es
+    stdcall FileSys.ScanDir
+
+    cmp     cl, $F0
+    je      .SkipEntry
+
+    push    cx ax
+    mov     cx, 7
+    mov     al, ' '
+    rep stosb
+    dec     di
+    pop     ax cx
+    cmp     cl, $10
+    jne     @F
+    mov     cx, [.fileDir.Len]
+    sub     di, cx
+    inc     di
+    mov     si, .fileDir
+    rep  movsb
+    jmp     .Write
+@@:
+    test    dx, dx
+    jnz     .Write
+    mov     cx, 10
+.AddNum:
+    xor     dx, dx
+    div     cx
+    add     dl, '0'
+    mov     [di], dl
+    dec     di
+    test    ax, ax
+    jnz     .AddNum
+
+
+.Write:
+
+    push    cs
+    pop     ds
+    mov     dx, .filelist_buffer
+    mov     ah, 0x09
+    int     21h
+
+.SkipEntry:
+    pop     di cx ax
+
+    inc     ax
+    loop    .Loop
+
+    ret
+.fileDir db '[DIR]'
+.fileDir.Len dw $-.fileDir
+.filelist_buffer   db 20 dup 0, 13,10, '$'
 endp
 
 FileSys.TableSeg       dw 0
