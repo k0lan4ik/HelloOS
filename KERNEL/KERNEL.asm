@@ -1,7 +1,7 @@
         format binary as 'SYS'
         include 'proc16.inc'
 
-;define DEBUG
+define DEBUG
 
 macro DEBUGPRINT From*
 {
@@ -77,15 +77,59 @@ EntryPoint:
 @@:
         jmp     .Exit
 .NotErr:
-        mov     si, Kernel.isAllOk
+
 .Exit:
 
-        call    print_string
-        mov     ax, $5307
-        mov     bx, $0001
-        mov     cx, $0003
-        int     15h
+        call    System.shutDown
         int     19h
+
+APM_LOST_CODE = $86
+System.shutDown:
+        mov ax, $53_00
+        xor bx, bx
+        int 15h
+        jc .oldVersion
+.ApmVersion:
+        mov ax, $53_04
+        xor bx, bx
+        int 15h
+        jc .firstCheck
+.continue_1:
+        mov ax, $53_01 ;connect all devices to APM
+        xor bx, bx
+        int 15h
+        jc .oldVersion
+
+        mov ax, $53_08 ;set all of them managed by APM
+        mov bx, $FFFF
+        mov cx, 1
+        int 15h
+        jc .oldVersion
+
+        mov ax, $53_07
+        mov bx, $00_01
+        mov cx, 3
+        int 15h
+.firstCheck:
+        cmp ah, 03
+        jne .oldVersion
+        jmp .continue_1
+
+.oldVersion:
+        push  cs
+        pop   ds
+        mov ah, 09h
+        mov dx, Statements.powerOff
+        int 21h
+
+..infinityLoop:
+        cli
+        hlt
+
+ret
+
+Statements.powerOff db "Power off PC manually...$"
+
 ;Parameters
 ;       ds:si - name of file
 ;       bx - loader prog segment (parent handle)
@@ -159,6 +203,43 @@ endl
      ret
 endp
 
+;Parameters
+;       ds:si - name of file
+;Return in cf is error
+proc LoadFont uses es bx di bp
+     cmp  [Font.Segment], 0
+     je   .First
+     mov  ax, [Font.Segment]
+     stdcall Memory.Free
+.First:
+     mov  bx, cs
+     call FileSys.LoadFile
+     jnc  @F
+     DEBUGPRINT ax
+     jmp  .EndProc
+@@:
+     test dx, dx
+     jne  .SizeFalse
+     cmp  ax, 4096
+     jne  .SizeFalse
+     mov [Font.Segment], di
+     mov ax, 0x1100
+     mov bx, 0x1000
+     mov cx, 256
+     xor dx,dx
+     mov bp, dx
+     mov es,di
+     int 10h
+     jmp .EndProc
+.SizeFalse:
+     xchg ax, di
+     stdcall Memory.Free
+     mov  ah, $08
+.EndProc:
+     ret
+endp
+Font.Segment dw 0
+
 proc HexPrint
     mov     cx, 4
 @@:
@@ -190,6 +271,8 @@ print_string:
         jmp     .repeat
 .return:
         ret
+
+
 
         include 'MEMORY.asm'
         include 'FILESYS.asm'

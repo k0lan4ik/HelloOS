@@ -5,18 +5,58 @@ proc Interput.Initialize uses es
      pop     es
      pushf
      cli
-     mov word [es:20h*4], INT20h
-     mov word [es:20h*4 + 2], cs
+     mov     word [es:00h*4], INT00h
+     mov     word [es:00h*4 + 2], cs
 
-     mov word [es:21h*4], INT21h
-     mov word [es:21h*4 + 2], cs
+     mov     word [es:06h*4], INT06h
+     mov     word [es:06h*4 + 2], cs
 
-     mov word [es:42h*4], INT42h
-     mov word [es:42h*4 + 2], cs
+
+     mov     word [es:20h*4], INT20h
+     mov     word [es:20h*4 + 2], cs
+
+     mov     word [es:21h*4], INT21h
+     mov     word [es:21h*4 + 2], cs
+
+     mov     word [es:42h*4], INT42h
+     mov     word [es:42h*4 + 2], cs
      sti
      popf
      ret
 endp
+
+INT00h:
+     push    cs
+     pop     ds
+     mov     si, DivisionError
+     call    print_string
+     jmp     INT20h
+INT06h:
+     push    cs
+     pop     ds
+     mov     si, OpcodeError
+     call    print_string
+
+     pop     di
+     pop     es
+     push    es
+     push    di
+     mov     bx, es
+     stdcall HexPrint
+     mov     si, OpcodeError.IP
+     call    print_string
+
+     mov     bx, di
+     stdcall HexPrint
+     mov     si, OpcodeError.OP
+     call    print_string
+
+     mov     bx, [es:di]
+     stdcall HexPrint
+     add     di, 2
+     mov     bx, [es:di]
+     stdcall HexPrint
+
 
 INT20h:
 
@@ -100,6 +140,11 @@ INT42h:
      call    FileSys.ScanDir
      jmp     .EndInt
 @@:
+     cmp     ch, $07
+     jne     @F
+     call    LoadFont
+     jmp     .EndInt
+@@:
 .EndInt:
      iret
 
@@ -134,7 +179,11 @@ INT21h:
      call    .check_key
      jmp     .EndInt
 @@:
-
+     cmp     ah, $0C
+     jne     @F
+     call    .ClearBuf
+     jmp     .EndInt
+@@:
 
 .EndInt:
      iret
@@ -173,7 +222,7 @@ INT21h:
     ret
 
 .read_char:
-    mov ah, 0x00
+    mov ah, 0x10
     int 16h
     mov ah, 0x0E
     int 10h
@@ -273,6 +322,40 @@ INT21h:
     ret
 
 .read_char_silent:
-    mov ah, 00h
+    cmp [BufExtend], 0
+    jz  .Good
+    mov al,[BufExtend]
+    mov [BufExtend], 0
+    jmp .EndProcChar
+.Good:
+    mov ah, 10h
     int 16h
+    test al, al
+    jz  @F
+    cmp al, 0eh
+    je  @F
+    jmp .EndProcChar
+@@:
+    mov [BufExtend], ah
+.EndProcChar:
     ret
+
+.ClearBuf:
+    push  ax
+.clear:
+    mov ah, 01h
+    int 16h
+    jz .endClear
+    xor ax, ax
+    int 16h
+    jmp .clear
+.endClear:
+    pop ax
+    xchg ah,al
+    int 21h
+    ret
+BufExtend     db 0
+DivisionError db 'Program terminate with division by 0 error!',0
+OpcodeError db 'Program terminate with invalid Opcode cs: ',0
+.IP db ' ip: ',0
+.OP db ' op: ',0

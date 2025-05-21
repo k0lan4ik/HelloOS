@@ -268,7 +268,7 @@ endp
 ;       ds:si - name file on format 8:3
 ;       bx - loader prog segment (parent handle)
 ;|Find and load file in curr dir|
-;Return in cf is error (is not found ax = 0), di - handle of file (segment of load file)
+;Return in cf is error (is not found ah = $04), di - handle of file (segment of load file)
 proc FileSys.LoadFile uses ds si es bx
 locals
   Res dw ?
@@ -280,6 +280,14 @@ endl
      jmp     .EndProc
 
 .Found:
+     push    dx ax
+     mov     es, [cs:FileSys.TableSeg]
+     movzx   cx, [es:BPB_SecPerClus]
+     imul    cx, [es:BPB_BytsPerSec]
+     add     ax, cx
+     adc     dx, 0
+     div     cx
+     mul     cx
      xchg    di, bx
      stdcall Memory.AllocFAT
      jnc     @F
@@ -299,6 +307,8 @@ endl
      jmp     .EndProc
 @@:
      mov     di, [Res]
+     pop     ax dx
+
      clc
 .EndProc:
      ret

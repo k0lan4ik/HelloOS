@@ -2,6 +2,7 @@ format binary as 'CAM'
 
 org 100h
 .EntryPoint:
+
     mov   dx, HelloStr
     mov   ah, $09
     int   21h
@@ -58,35 +59,38 @@ org 100h
     ret
 @@:
     mov   si, Comand
+    mov   di, CommandF
+    mov   cx, 4
+    repe  cmpsb
+    jne   @F
+    mov   al, 16
+    cmp   al, [ComandStr + 1]
+    jae   .OkFont
+    mov   dx, ErrLengStr
+    mov   ah, $09
+    int   21h
+    jmp   .Ender
+.OkFont:
+    call  FileNameConvert
+    mov   ch, $07
+    mov   si, FileName
+    int   42h
+    jmp   .Ender
+@@:
+    mov   si, Comand
     mov   di, CommandEXE
     mov   cx, 7
     repe  cmpsb
     jne   @F
     mov   al, 20
     cmp   al, [ComandStr + 1]
-    jae   .Ok
+    jae   .OkExecute
     mov   dx, ErrLengStr
     mov   ah, $09
     int   21h
     jmp   .Ender
-.Ok:
-    mov   di, FileName
-    inc   si
-    mov   cx, 8
-.loopFileName:
-    mov   al, '.'
-    cmp   al, [si]
-    jne   .Add
-    mov   byte[di], ' '
-    inc   di
-    jmp   .endloop
-.Add:
-    movsb
-.endloop:
-    loop  .loopFileName
-    inc   si
-    mov   cx, 3
-    rep   movsb
+.OkExecute:
+    call  FileNameConvert
     mov   ch, $05
     mov   si, FileName
     int   42h
@@ -175,6 +179,26 @@ org 100h
 .Ender:
     jmp  .workLoop
 
+FileNameConvert:
+    mov   di, FileName
+    inc   si
+    mov   cx, 8
+.loopFileName:
+    mov   al, '.'
+    cmp   al, [si]
+    jne   .Add
+    mov   byte[di], ' '
+    inc   di
+    jmp   .endloop
+.Add:
+    movsb
+.endloop:
+    loop  .loopFileName
+    inc   si
+    mov   cx, 3
+    rep   movsb
+    ret
+
 HexPrint:
     mov     cx, 4
 @@:
@@ -194,14 +218,16 @@ HexPrint:
     ret
 
 
-
+Font       db 'FONT1   FNT'
 CommandH   db 'HELP'
 CommandL   db 'LIST'
 CommandE   db 'EXIT'
+CommandF   db 'FONT'
 CommandEXE db 'EXECUTE'
 HelpStr    db 'Commands:',13,10,'  help - help about commands'\
                          ,13,10,'  exit - exit from this program'\
-                         ,13,10,'  execute [file name] - execute program',13,10,'$'
+                         ,13,10,'  execute [file name] - execute program'\
+                         ,13,10,'  font [file name] - switch font to font in file',13,10,'$'
 ErrLengStr db 'Lenght of filename need lower or equel 8 (12 whis .CAM)',13,10,'$'
 ErrFNF     db 'File Not Found', 13, 10, '$'
 HelloStr   db 13,10,'Hello OS v1 Explorer', 13,10,'$'
