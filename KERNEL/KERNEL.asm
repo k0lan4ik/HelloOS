@@ -207,22 +207,20 @@ endp
 ;       ds:si - name of file
 ;Return in cf is error
 proc LoadFont uses es bx di bp
-     cmp  [Font.Segment], 0
+     cmp  [cs:.FontSegment], 0
      je   .First
-     mov  ax, [Font.Segment]
+     mov  ax, [cs:.FontSegment]
      stdcall Memory.Free
 .First:
      mov  bx, cs
      call FileSys.LoadFile
-     jnc  @F
-     DEBUGPRINT ax
-     jmp  .EndProc
-@@:
+     jc   .EndProc
+
      test dx, dx
      jne  .SizeFalse
      cmp  ax, 4096
      jne  .SizeFalse
-     mov [Font.Segment], di
+     mov [cs:.FontSegment], di
      mov ax, 0x1100
      mov bx, 0x1000
      mov cx, 256
@@ -237,8 +235,9 @@ proc LoadFont uses es bx di bp
      mov  ah, $08
 .EndProc:
      ret
+.FontSegment dw 0
 endp
-Font.Segment dw 0
+
 
 proc HexPrint
     mov     cx, 4

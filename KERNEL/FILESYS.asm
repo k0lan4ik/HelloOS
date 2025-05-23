@@ -322,9 +322,10 @@ proc FileSys.ScanDir uses ds si
      mov     ds, [FileSys.DirSeg]
      shl     ax, 5
      mov     si, ax
-     cmp     byte[si], $E5
+     mov     ch, byte[si]
+     cmp     ch, $E5
      je     .Skip
-     cmp     byte[si], $00
+     cmp     ch, $00
      je     .Skip
 
      mov     cl, [si + 11]
@@ -344,6 +345,7 @@ proc FileSys.ScanDir uses ds si
      je      @F
      xor     cl, cl
 @@:
+     xor     ch, ch
      mov     ax, [si + 17]
      mov     dx, [si + 19]
      jmp     .EndProc
@@ -420,6 +422,33 @@ proc FileSys.ListDir uses es di ds si cx ax dx
 .fileDir db '[DIR]'
 .fileDir.Len dw $-.fileDir
 .filelist_buffer   db 20 dup 0, 13,10, '$'
+endp
+
+proc FileSys.Create
+     mov     ax, 1
+     mov     cx, [cs:FileSys.TableSeg]
+     mov     ds, cx
+     mov     cx, [ds:BPB_RootEntCnt]
+
+     mov     di, [cs:FileSys.ListDir.filelist_buffer]
+
+.FingFreeDir:
+     push    ax cx di
+     push    cs
+     pop     es
+     stdcall FileSys.ScanDir
+     cmp     cx, $00F0
+     je      .Found
+     cmp     cx, $E5F0
+     je      .Found
+     jmp     .SkipEntry
+.Found:
+
+.SkipEntry:
+     pop     di cx ax
+     inc     ax
+     loop    .FingFreeDir
+     ret
 endp
 
 FileSys.TableSeg       dw 0
