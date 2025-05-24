@@ -14,7 +14,18 @@ struct DirEnt
 ends
 
 struct FileHandle
-       CurrCls dd ?
+       CurrCls    dd ?
        CurrPoint  dd ?
        Mode       dw ?
+       Reserved   db 6 dup ?
+       Dir        DirEnt
 ends
+
+struct FileOpenArea
+       CountHandle db ?
+       ActualClus  dd ?
+       isGird      db ?
+       Reserved    db 10 dub ?
+ends
+
+
