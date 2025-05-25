@@ -20,7 +20,7 @@ label   BS_VolID        dword at $0027
 label   BS_VolLab       byte at $002B
 label   BS_FilSysType   byte at $0036
 
-
+CountFile = 20
 
 ;Parameters
 ;       dx:ax - LBA of start load
@@ -177,6 +177,9 @@ proc FileSys.Initialize uses es ds di si bx
      jc      .EndProc
 
      add     [cs:FileSys.DirPointer], 2
+
+     stdcall FileSys.InitFileManager
+
      clc
 .EndProc:
      ret
@@ -424,10 +427,55 @@ proc FileSys.ListDir uses es di ds si cx ax dx
 .filelist_buffer   db 20 dup 0, 13,10, '$'
 endp
 
-proc FileSys.Create
+
+proc FileSys.InitFileManager uses bx ds es
+     mov     ds, [cs:FileSys.TableSeg]
+     movzx   ax, [BPB_SecPerClus]
+     mul     [BPB_BytsPerSec]
+     mov     cx, sizeof.FileHandle
+     imul    cx, cx, CountFile
+     add     cx, sizeof.FileArea
+     push    cx
+     add     ax, cx
+     adc     dx, 0
+     mov     bx, cs
+     stdcall Memory.AllocFAT
+     jc      .EndProc
+     pushf
+     mov     ax, [FileSys.FileManagerSeg]
+     mov     ds, ax
+     mov     es, ax
+     mov     [FileArea.CountHandle], CountFile
+
+     cld
+
+     mov     di, FileArea.ActualClus
+     mov     cx, sizeof.FileArea - sizeof.FileArea.CountHandle
+     xor     ax, ax
+     rep     stosw
+
+     mov     cx, sizeof.FileHandle
+     imul    cx, cx, CountFile
+     rep     stosw
+
+     pop     cx
+     shr     cx, 4
+     add     cx, ax
+     mov     [FileArea.ClusSec], cx
+     popf
+     clc
+.EndProc:
+     ret
+endp
+
+;Parameters
+;       ds:dx - pointer for name file on format 8:3
+;       cx -  file attribute
+;Return AX: file handle or $FF[errorcode] if error
+proc FileSys.CreateFile
+     push    cx
      mov     ax, 1
-     mov     cx, [cs:FileSys.TableSeg]
-     mov     ds, cx
+     mov     ds, [cs:FileSys.TableSeg]
      mov     cx, [ds:BPB_RootEntCnt]
 
      mov     di, [cs:FileSys.ListDir.filelist_buffer]
@@ -441,19 +489,29 @@ proc FileSys.Create
      je      .Found
      cmp     cx, $E5F0
      je      .Found
-     jmp     .SkipEntry
-.Found:
-
-.SkipEntry:
      pop     di cx ax
      inc     ax
      loop    .FingFreeDir
+     mov     ax, $FF01
+     jmp     .EndProc
+.Found:
+     shl     ax, 5
+     add     ax, [cs:FileSys.DirSeg]
+
+.EndProc:
      ret
 endp
 
+
+FileSys.FileManagerSeg dw 0
 FileSys.TableSeg       dw 0
 FileSys.FATSeg         dw 0
 FileSys.DirSeg         dw 0
 FileSys.PathStack      dd 32 dup 0
 FileSys.DirPointer     dw 0
 FileSys.DataClasterOfs dd 0
+
+
+
+
+include 'FileSysStruct.inc'

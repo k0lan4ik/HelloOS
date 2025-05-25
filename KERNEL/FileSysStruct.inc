@@ -1,5 +1,5 @@
  include 'win32a.inc'
-struct DIRENT
+struct DirEnt
        Name db 11 dup (?)
        Attr db ?
        NTRes db ?
@@ -14,18 +14,19 @@ struct DIRENT
        FileSize dd ?
 ends
 struct FileHandle
-       CurrCls    dd ?
-       CurrPoint  dd ?
-       Mode       dw ?
+       CurrCls    dd 0
+       CurrPoint  dd 0
+       Mode       dw 0
        Reserved   db 6 dup ?
        Dir        DirEnt
 ends
 
-struct FileOpenArea
-       CountHandle db ?
-       ActualClus  dd ?
-       isGird      db ?
-       Reserved    db 10 dub ?
+struct FileArea
+       CountHandle db CountFile
+       ActualClus  dd 0
+       isGird      db 0
+       ClusSec     dw 0
+       Reserved    db 8 dup ?
 ends
 
 

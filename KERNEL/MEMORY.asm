@@ -127,7 +127,6 @@ proc Memory.AllocMAX uses ds bx di
      jne        .Next
      cmp        cx, ax
      jbe        @F
-     DEBUGPRINT ds
      mov        ax, cx
      mov        di, ds
 @@:
@@ -142,7 +141,6 @@ proc Memory.AllocMAX uses ds bx di
      test       di, di
      jz         .NotFound
      mov        [MCZ.segOwner], bx
-     DEBUGPRINT [MCZ.cpSize]
      mov        ax, ds
      inc        ax
      clc
@@ -155,7 +153,10 @@ proc Memory.AllocMAX uses ds bx di
      ret
 endp
 
-
+;Parameters
+;       dx:ax - Needed size of block memory (in byte)
+;       bx - Identificator of program, that need memory
+;Return in ax number of allocate segment
 proc Memory.AllocFAT uses ds bx
      add        ax, 15
      adc        dx, 0
