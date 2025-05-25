@@ -150,6 +150,11 @@ INT42h:
      call    FileSys.ListDir
      jmp     .EndInt
 @@:
+     cmp     ch, $0A
+     jne     @F
+     call    Memory.Resize
+     jmp     .EndInt
+@@:
 .EndInt:
      iret
 
@@ -187,6 +192,12 @@ INT21h:
      cmp     ah, $0C
      jne     @F
      call    .ClearBuf
+     jmp     .EndInt
+@@:
+     cmp     ah, $4A
+     jne     @F
+     mov     ax, es
+     call    Memory.Resize
      jmp     .EndInt
 @@:
 

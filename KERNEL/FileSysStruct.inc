@@ -1,10 +1,11 @@
-struct DirEnt
+ include 'win32a.inc'
+struct DIRENT
        Name db 11 dup (?)
        Attr db ?
        NTRes db ?
-       CrtTimeTenth ?
+       CrtTimeTenth dw ?
        CrtTime dw ?
-       CrtDate
+       CrtDate dw ?
        LstAccDate dw ?
        FstClusHI dw ?
        WrtTime dw ?
@@ -12,7 +13,6 @@ struct DirEnt
        FstClusLO dw ?
        FileSize dd ?
 ends
-
 struct FileHandle
        CurrCls    dd ?
        CurrPoint  dd ?

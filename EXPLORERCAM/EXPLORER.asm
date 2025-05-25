@@ -2,7 +2,9 @@ format binary as 'CAM'
 
 org 100h
 .EntryPoint:
-
+    mov   ah, $4A
+    mov   bx, 256
+    int   21h
     mov   dx, HelloStr
     mov   ah, $09
     int   21h
@@ -96,13 +98,20 @@ org 100h
     int   42h
     cmp   ah, 0
     je    .ExeCompl
+    cmp   ah, $03
+    je    .NotAlloc
     cmp   ah, $04
     jne   .Found
     mov   dx,ErrFNF
     mov   ah, $09
     int   21h
     jmp   .Ender
+.NotAlloc:
+    mov   dx,ErrMem
+    mov   ah, $09
+    int   21h
 .Found:
+
 .ExeCompl:
     jmp  .EntryPoint
 @@:
@@ -170,6 +179,7 @@ HelpStr    db 'Commands:',13,10,'  help - help about commands'\
                          ,13,10,'  font [file name] - switch font to font in file',13,10,'$'
 ErrLengStr db 'Lenght of filename need lower or equel 8 (12 whis .CAM)',13,10,'$'
 ErrFNF     db 'File Not Found', 13, 10, '$'
+ErrMem     db 'Not have memory'
 HelloStr   db 13,10,'Hello OS v1 Explorer', 13,10,'$'
 EnterStr   db 13, 10, '$'
 StringRoad db 'disk >$',0

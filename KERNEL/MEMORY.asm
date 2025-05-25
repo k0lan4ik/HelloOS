@@ -108,6 +108,53 @@ proc Memory.AllocFirst uses ds bx
      ret
 endp
 
+;Parameters
+;       ax - Min Needed size of block memory (in byte)
+;       bx - Identificator of program, that need memory
+;Return in ax number of allocate segment
+proc Memory.AllocMAX uses ds bx di
+     add        ax, 15
+     adc        dx, 0
+     shrd       ax, dx, 4
+     mov        dx, (Options.Kernel.SDZSegment)
+     mov        ds, dx
+     mov        dx, [SDZ.segFirstMCZ]
+     mov        ds, dx
+     xor        di, di
+.SearchLoop:
+     mov        cx, [MCZ.cpSize]
+     cmp        [MCZ.segOwner], 0
+     jne        .Next
+     cmp        cx, ax
+     jbe        @F
+     DEBUGPRINT ds
+     mov        ax, cx
+     mov        di, ds
+@@:
+     test       [MCZ.wFlags], MCZ_FLAG_LASTITEM
+     jnz        .EndSearch
+.Next:
+     add        dx, cx
+     inc        dx
+     mov        ds, dx
+     jmp        .SearchLoop
+.EndSearch:
+     test       di, di
+     jz         .NotFound
+     mov        [MCZ.segOwner], bx
+     DEBUGPRINT [MCZ.cpSize]
+     mov        ax, ds
+     inc        ax
+     clc
+     jmp        .EndProc
+
+.NotFound:
+     xor        ax, ax
+     stc
+.EndProc:
+     ret
+endp
+
 
 proc Memory.AllocFAT uses ds bx
      add        ax, 15
@@ -205,3 +252,98 @@ proc Memory.Free uses ds bx si
 .EndProc:
      ret
 endp
+
+;Parameters
+;       ax - number allocate segment
+;       bx - count of  segment
+;Return
+proc Memory.Resize uses ds bx si
+     dec        ax
+     mov        ds, ax
+     mov        cx, [MCZ.cpSize]
+     cmp        bx, cx
+     ja         .Add
+     je         .EndProc
+     mov        [MCZ.cpSize], bx
+     inc        bx
+     sub        cx, bx
+     add        ax, bx
+     mov        si, [MCZ.wFlags]
+     and        [MCZ.wFlags], not MCZ_FLAG_LASTITEM
+
+     mov        ds, ax
+     mov        [MCZ.cpSize], cx
+     mov        [MCZ.segOwner], 0
+     mov        [MCZ.segPrevMCZ], ax
+     sub        [MCZ.segPrevMCZ], bx
+     inc        [MCZ.segPrevMCZ]
+
+     and        si, MCZ_FLAG_LASTITEM
+     mov        [MCZ.wFlags], si
+     jnz        .EndProc
+
+     add        cx, ax
+     inc        cx
+     mov        ds, cx
+     cmp        [MCZ.segOwner], 0
+     jz         @F
+     mov        [MCZ.segPrevMCZ], ax
+     jmp        .EndProc
+@@:
+     mov        dx, [MCZ.wFlags]
+     and        dx, MCZ_FLAG_LASTITEM
+     or         si, dx
+
+     mov        cx, [MCZ.cpSize]
+     inc        cx
+
+     mov        ds, ax
+     add        [MCZ.cpSize], cx
+     xor        ax, ax
+     jmp        .EndProc
+.Add:
+     sub        bx, cx
+     add        cx, ax
+     inc        cx
+     mov        ds, cx
+     cmp        [MCZ.segOwner], 0
+     je         @F
+     mov        ax, 8
+     jmp        .EndProc
+@@:
+
+     dec        bx
+     cmp        bx, [MCZ.cpSize]
+     je         @F
+     jb         .New
+     mov        ax, 4
+     jmp        .EndProc
+@@:
+     inc        bx
+     add        cx, bx
+     mov        ds, cx
+     mov        [MCZ.segPrevMCZ], ax
+     mov        ds, ax
+     add        [MCZ.cpSize], bx
+     xor        ax, ax
+     jmp        .EndProc
+.New:
+     mov        dx, [MCZ.cpSize]
+     sub        dx, bx
+     dec        dx
+     mov        si, [MCZ.wFlags]
+     add        cx, bx
+     inc        cx
+     mov        ds, cx
+     mov        [MCZ.segPrevMCZ], ax
+     mov        [MCZ.segOwner], 0
+     mov        [MCZ.cpSize], dx
+     mov        [MCZ.wFlags], si
+     add        dx, cx
+     mov        ds, dx
+     mov        [MCZ.segPrevMCZ], dx
+     xor        ax, ax
+.EndProc:
+     ret
+endp
+
