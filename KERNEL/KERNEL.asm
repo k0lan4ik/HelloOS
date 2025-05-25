@@ -145,10 +145,8 @@ endl
      jmp     .EndProc
 @@:
      push    bx
-     xor     ax, ax
-     mov     dx, $0001
      mov     bx, di
-     stdcall Memory.AllocFAT
+     stdcall Memory.AllocMAX
      pop     bx
      jnc     @F
      mov     ah, $03
