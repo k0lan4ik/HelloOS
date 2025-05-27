@@ -12,6 +12,8 @@ macro DEBUGPRINT From*
      pusha
      mov     bx, From
      stdcall HexPrint
+     mov     ax, $0e00 or ' '
+     int     10h
      xor     ax, ax
      int     16h
      popa

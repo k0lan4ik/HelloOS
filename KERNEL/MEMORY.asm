@@ -122,6 +122,7 @@ proc Memory.AllocMAX uses ds bx di
      mov        ds, dx
      xor        di, di
 .SearchLoop:
+     DEBUGPRINT ds
      mov        cx, [MCZ.cpSize]
      cmp        [MCZ.segOwner], 0
      jne        .Next
@@ -276,7 +277,6 @@ proc Memory.Resize uses ds bx si
      mov        [MCZ.segOwner], 0
      mov        [MCZ.segPrevMCZ], ax
      sub        [MCZ.segPrevMCZ], bx
-     inc        [MCZ.segPrevMCZ]
 
      and        si, MCZ_FLAG_LASTITEM
      mov        [MCZ.wFlags], si
