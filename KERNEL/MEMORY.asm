@@ -218,20 +218,26 @@ proc Memory.Free uses ds bx si
      dec        ax
      mov        ds, ax
      mov        cx, [MCZ.cpSize]
+     DEBUGPRINT cx
      mov        bx, ax
      mov        si, [MCZ.wFlags]
+     DEBUGPRINT si
      and        si, MCZ_FLAG_LASTITEM
      jnz        .NextMergeDone
      mov        dx, ax
      add        dx, cx
      inc        dx
      mov        ds, dx
+     DEBUGPRINT ds
      inc        dx
+     DEBUGPRINT [MCZ.segOwner]
      cmp        [MCZ.segOwner], 0
      jne        .NextMergeDone
      mov        dx, [MCZ.wFlags]
+     DEBUGPRINT dx
      and        dx, MCZ_FLAG_LASTITEM
      or         si, dx
+     DEBUGPRINT si
      add        cx, [MCZ.cpSize]
      inc        cx
 .NextMergeDone:
@@ -240,6 +246,7 @@ proc Memory.Free uses ds bx si
      test       dx, dx
      jz         .PrevMergeDone
      mov        ds, dx
+     DEBUGPRINT [MCZ.segOwner]
      cmp        [MCZ.segOwner], 0
      jne        .PrevMergeDone
      add        cx, [MCZ.cpSize]
@@ -293,6 +300,9 @@ proc Memory.Resize uses ds bx si
      mov        dx, [MCZ.wFlags]
      and        dx, MCZ_FLAG_LASTITEM
      or         si, dx
+
+
+
 
      mov        cx, [MCZ.cpSize]
      inc        cx

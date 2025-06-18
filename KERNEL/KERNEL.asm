@@ -1,7 +1,7 @@
         format binary as 'SYS'
         include 'proc16.inc'
 
-define DEBUG
+;       define DEBUG
 
 macro DEBUGPRINT From*
 {
@@ -205,7 +205,7 @@ endp
 
 ;Parameters
 ;       ds:si - name of file
-;Return in cf is error
+;Return in cf is error ah code error
 proc LoadFont uses es bx di bp
      cmp  [cs:.FontSegment], 0
      je   .First
@@ -215,7 +215,7 @@ proc LoadFont uses es bx di bp
      mov  bx, cs
      call FileSys.LoadFile
      jc   .EndProc
-
+     DEBUGPRINT di
      test dx, dx
      jne  .SizeFalse
      cmp  ax, 4096
@@ -228,9 +228,11 @@ proc LoadFont uses es bx di bp
      mov bp, dx
      mov es,di
      int 10h
+     xor ax,ax
      jmp .EndProc
 .SizeFalse:
      xchg ax, di
+     DEBUGPRINT ax
      stdcall Memory.Free
      mov  ah, $08
 .EndProc:

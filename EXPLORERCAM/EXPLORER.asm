@@ -15,6 +15,13 @@ org 100h
     mov   dx, ComandStr
     mov   ah, $0A
     int   21h
+    mov   dx, EnterStr
+    mov   ah, $09
+    int   21h
+
+
+    cmp   [ComandStr + 1], 0
+    je    .workLoop
 
     mov   al, ' '
     mov   di, Comand
@@ -38,9 +45,7 @@ org 100h
     inc   di
     loop  .UpCase
 .NotNeed:
-    mov   dx, EnterStr
-    mov   ah, $09
-    int   21h
+
     cld
 
     mov   si, Comand
@@ -77,6 +82,18 @@ org 100h
     mov   ch, $07
     mov   si, FileName
     int   42h
+    test  ah, ah
+    je    .Ender
+    cmp   ah, $08
+    jne   .Err
+    mov   dx, ErrInvFontFile
+    mov   ah, $09
+    int   21h
+    jmp   .Ender
+.Err:
+    mov   dx, ErrStr
+    mov   ah, $09
+    int   21h
     jmp   .Ender
 @@:
     mov   si, Comand
@@ -123,7 +140,11 @@ org 100h
     jne   @F
     mov   ch, $08
     int   42h
+    jmp   .Ender
 @@:
+    mov   dx, ErrInvOp
+    mov   ah, $09
+    int   21h
 .Ender:
     jmp  .workLoop
 
@@ -166,20 +187,22 @@ HexPrint:
     ret
 
 
-Font       db 'FONT1   FNT'
 CommandH   db 'HELP'
 CommandL   db 'LIST'
 CommandE   db 'EXIT'
 CommandF   db 'FONT'
 CommandEXE db 'EXECUTE'
-HelpStr    db 'Commands:',13,10,'  help - help about commands'\
+HelpStr    db 'Comands:',13,10,'  help - help about comands'\
                          ,13,10,'  exit - exit from this program'\
                          ,13,10,'  list - show all in current directory'\
                          ,13,10,'  execute [file name] - execute program'\
                          ,13,10,'  font [file name] - switch font to font in file',13,10,'$'
 ErrLengStr db 'Lenght of filename need lower or equel 8 (12 whis .CAM)',13,10,'$'
 ErrFNF     db 'File Not Found', 13, 10, '$'
-ErrMem     db 'Not have memory'
+ErrMem     db 'Not have memory', 13, 10, '$'
+ErrInvOp   db 'Comand not exist', 13, 10, '$'
+ErrStr     db 'Error!', 13,10,'$'
+ErrInvFontFile  db 'This file not needeble size', 13, 10, '$'
 HelloStr   db 13,10,'Hello OS v1 Explorer', 13,10,'$'
 EnterStr   db 13, 10, '$'
 StringRoad db 'disk >$',0
