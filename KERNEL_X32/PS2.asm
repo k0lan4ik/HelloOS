@@ -22,7 +22,6 @@ KEY_BUFFER_SIZE    equ 64
 
 proc  PS2.Init;{ Инициализация PS2
      cli
-
      mov       al, 0xAD
      call      PS2.SendCommand
      mov       al, 0xA7
@@ -36,23 +35,30 @@ proc  PS2.Init;{ Инициализация PS2
      jmp       .FlushLoop
 .FlushDone:
 
-     mov al, 0x20
-     call PS2.SendCommand
-     call PS2.ReadData
+     mov       al, 0x20
+     call      PS2.SendCommand
+     call      PS2.ReadData
      
-     or al, 1 
-     mov ah, al
+     or        al, 1 or 2
+     mov       ah, al
 
-     mov al, 0x60
-     call PS2.SendCommand
+     mov       al, 0x60
+     call      PS2.SendCommand
      
-     mov al, ah
-     call PS2.SendData
+     mov       al, ah
+     call      PS2.SendData
+
+     
+     mov       al, 0xAE
+     call      PS2.SendCommand
+     mov       al, 0xA8 
+     call      PS2.SendCommand
      
      mov       [PS2.CmdQueue.Head], 0
      mov       [PS2.CmdQueue.Tail], 0
      mov       [PS2.CurrentCommand], 0
      mov       [PS2.ScancodeState], PS2_STATE_NORMAL
+     mov       [PS2.Mouse.Cycle], 0
 
      mov       ax, 0x28
      mov       es, ax
@@ -61,10 +67,16 @@ proc  PS2.Init;{ Инициализация PS2
      mov       dx, cs
      call      Interrupt.Make      
 
-     mov       al, 0xAE
-     call      PS2.SendCommand
+     mov       esi, 0x2C * 8
+     mov       eax, PS2.IRQ12Handler
+     call      Interrupt.Make
 
      sti
+
+     mov al, 0xD4 
+     call PS2.QueueCommand
+     mov al, 0xF4 
+     call PS2.QueueCommand
 
      mov al, 0xF4
      call PS2.QueueCommand
@@ -140,6 +152,7 @@ proc PS2.QueueCommand uses eax ecx edx;{ Поставить команду в о
 .QueueFull:
      stc
      ret
+
 endp
 
 proc PS2.SendNextFromQueue uses eax ecx ;{ Внутреняя функция для отправки следующей команды
@@ -155,10 +168,22 @@ proc PS2.SendNextFromQueue uses eax ecx ;{ Внутреняя функция д�
      and       ecx, PS2_CMD_QUEUE_SIZE - 1
      mov       [PS2.CmdQueue.Tail], ecx
 
-     call      PS2.SendData 
-
+     cmp       [PS2.SendNextFromQueue.IsPrevD4], 1
+     je        .SendData
+     cmp       al, 0xD4
+     jne       @F
+     xor       [PS2.SendNextFromQueue.IsPrevD4], 1
+     mov       [PS2.CurrentCommand], 0
+@@:
+     call      PS2.SendCommand 
+     jmp       .EndProc
+.SendData: 
+     call      PS2.SendData
+     xor       [PS2.SendNextFromQueue.IsPrevD4], 1
 .EndProc:
-     ret     
+     ret   
+     
+PS2.SendNextFromQueue.IsPrevD4 db 0
 endp
 
 proc PS2.CommandSucceeded;{ Вызывается из IRQ при получении ACK (0xFA)
@@ -181,15 +206,15 @@ proc PS2.ResendCurrentCommand
      ret     
 endp
 
-;                 ОБРАБОТЧИК ПРЕРЫВАНИЯ
+;                 ОБРАБОТЧИКИ ПРЕРЫВАНИЙ
 
-; --- Флаги модификаторов (битовая маска) ---
+;Флаги модификаторов (битовая маска)
 MOD_SHIFT_FLAG      equ 1
 MOD_CTRL_FLAG       equ 2
 MOD_ALT_FLAG        equ 4
 MOD_CAPS_LOCK_FLAG  equ 8
 
-; --- Скан-коды клавиш-модификаторов ---
+;Скан-коды клавиш-модификаторов 
 SCANCODE_LSHIFT_PRESSED     equ 0x2A
 SCANCODE_RSHIFT_PRESSED     equ 0x36
 SCANCODE_LCTRL_PRESSED      equ 0x1D
@@ -197,6 +222,7 @@ SCANCODE_LALT_PRESSED       equ 0x38
 SCANCODE_CAPSLOCK_PRESSED   equ 0x3A
 
 proc PS2.IRQ1Handler 
+     ;xchg bx, bx
      pusha
      call      PS2.ReadData
 
@@ -234,7 +260,7 @@ proc PS2.IRQ1Handler
      cmp       bl, SCANCODE_CAPSLOCK_PRESSED
      je        .Handle.CapslockPress     
      
-     ; --- Проверка на функциональные клавиши (F1-F12) ---
+     ;Проверка на функциональные клавиши (F1-F12)
      cmp       bl, 0x3B ; F1
      jb        .Handle.ConvertToChar ; Не F-клавиша, обрабатываем как обычную
      cmp       bl, 0x44 ; F10
@@ -279,11 +305,11 @@ proc PS2.IRQ1Handler
      cmp       bl, (PS2.ScancodeMapNormal.End - PS2.ScancodeMapNormal)
      jae       .EndProc
 
-     ; --- Проверка на Alt + буквенно-цифровые клавиши ---
+     ;Проверка на Alt + буквенно-цифровые клавиши
      test      [PS2.ModifierState], MOD_ALT_FLAG
      jnz       .Handle.AltChar
 
-     ; --- Проверка на Ctrl + [a-z] ---
+     ;Проверка на Ctrl + [a-z]
      test      [PS2.ModifierState], MOD_CTRL_FLAG
      jz        .CheckShiftAndCaps
      mov       al, [PS2.ScancodeMapNormal + ebx]
@@ -399,7 +425,7 @@ proc PS2.IRQ1Handler
      mov al, 0x20
      out 0x20, al     
      popa
-     iret
+     iretd
 endp     
 
 proc PS2.AddCharToKeyBuffer uses eax ecx edx
@@ -440,21 +466,7 @@ proc PS2.AddExtendedCharToKeyBuffer uses ebx ecx edx
      ret
 endp
 
-
-;            ПЕРЕМЕННЫЕ
-;Очередь команд
-PS2.CmdQueue:       times PS2_CMD_QUEUE_SIZE db 0
-PS2.CmdQueue.Head   dd 0
-PS2.CmdQueue.Tail   dd 0
-
-;Состояние текущей команды
-PS2.CurrentCommand  db 0
-PS2.RetryCount      db 0
-
-;Конечный автомат для скан-кодов
-PS2.ScancodeState   db 0
-
-; --- Таблицы соответствия Скан-код -> ASCII ---
+;Таблицы соответствия Скан-код -> ASCII
 PS2.ScancodeMapNormal:
     db  0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 8, 9
     db  'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', 13, 0
@@ -469,7 +481,7 @@ PS2.ScancodeMapShifted:
     db  'Z', 'X', 'C', 'V', 'B', 'N', 'M', '<', '>', '?', 0, '*', 0, ' ', 0
 PS2.ScancodeMapShifted.End:
 
-; --- Таблицы для расширенных клавиш ---
+;Таблицы для расширенных клавиш 
 PS2.ScancodeMapExtended:
     times 0x1D db 0
     db 13 ; Enter на цифровой клавиатуре
@@ -479,13 +491,13 @@ PS2.ScancodeMapExtended:
     db 71, 72, 73, 0, 75, 0, 77, 0, 79, 80, 81, 0, 82, 83 ; Home, Up, PgUp, Left, Right, End, Down, PgDn, Ins, Del
 PS2.ScancodeMapExtended.End:
 
-; --- Таблицы для функциональных клавиш ---
+;Таблицы для функциональных клавиш 
 PS2.ScancodeMapFkeysNormal: db 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 133, 134
 PS2.ScancodeMapFkeysShift:  db 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 135, 136
 PS2.ScancodeMapFkeysCtrl:   db 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 137, 138
 PS2.ScancodeMapFkeysAlt:    db 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 139, 140
 
-; --- Таблица для Alt + буквенно-цифровые клавиши ---
+; Таблица для Alt + буквенно-цифровые клавиши 
 PS2.ScancodeMapAltChars:
     db 0,0,120,121,122,123,124,125,126,127,128,129,130,131,0,0 ; 0x00-0x0F
     db 16,17,18,19,20,21,22,23,24,25,0,0,0,0,30,31,32,33,34,35,36,37,38,0,0,0 ; 0x10-0x2A
@@ -493,6 +505,91 @@ PS2.ScancodeMapAltChars:
 PS2.ScancodeMapAltChars.End:
 ;Состояние клавиш-модификаторов
 PS2.ModifierState   db 0 ; Битовая маска флагов MOD_*
+
+proc PS2.IRQ12Handler 
+
+ ;    xchg bx, bx
+
+     pusha
+     call      PS2.ReadData
+     
+     mov       cl, [PS2.Mouse.Cycle]
+     
+     test      cl, cl
+     je        .Byte0
+     cmp       cl, 2
+     je        .Byte2
+
+.Byte1:
+     mov       [PS2.Mouse.Packet + 1], al
+     mov       [PS2.Mouse.Cycle], 2
+     jmp       .EndProc
+
+.Byte0:
+     test      al, 0x08
+     jnz       @F
+     mov       [PS2.Mouse.Cycle], 0
+     jmp       .EndProc
+ @@:        
+     mov       [PS2.Mouse.Packet], al
+     mov       [PS2.Mouse.Cycle], 1
+     jmp       .EndProc
+
+.Byte2:
+     mov       [PS2.Mouse.Packet + 2], al
+
+.ProccessPacket:
+     mov       [PS2.Mouse.Cycle], 0
+     
+     movzx     eax, byte [PS2.Mouse.Packet+1] ; dx
+     movzx     edx, byte [PS2.Mouse.Packet+2] ; dy
+     movzx     ecx, byte [PS2.Mouse.Packet]   ; flags
+
+     mov       [PS2.Mouse.Buttons], cl
+
+     test      cl, 0x10
+     jz        @F
+     or        eax, 0xFFFFFF00
+@@:
+     add       [PS2.Mouse.X], eax
+
+
+     test      cl, 0x20
+     jz        @F
+     or        edx, 0xFFFFFF00
+@@:
+     sub       [PS2.Mouse.Y], edx
+
+.EndProc:
+     mov       al, 0x20
+     out       0xA0, al
+     out       0x20, al
+     popa
+     iretd
+
+;Состояние мыши
+PS2.Mouse.Cycle     db 0    ; Текущий байт в 3-байтовом пакете (0, 1, 2)
+PS2.Mouse.Packet    db 0,0,0; Массив для хранения пакета
+PS2.Mouse.X         dd 0    ; Координата X
+PS2.Mouse.Y         dd 0    ; Координата Y
+PS2.Mouse.Buttons   db 0    ; Состояние кнопок
+
+endp
+
+
+;            ПЕРЕМЕННЫЕ
+;Очередь команд
+PS2.CmdQueue:       times PS2_CMD_QUEUE_SIZE db 0
+PS2.CmdQueue.Head   dd 0
+PS2.CmdQueue.Tail   dd 0
+
+;Состояние текущей команды
+PS2.CurrentCommand  db 0
+PS2.RetryCount      db 0
+
+;Конечный автомат для скан-кодов
+PS2.ScancodeState   db 0
+
 
 ;Выходной буфер для ОС
 PS2.KeyBuffer:       times KEY_BUFFER_SIZE db 0

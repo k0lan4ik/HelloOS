@@ -123,7 +123,67 @@ proc ScreenMode03.PrintString uses esi eax;{ Выводит cтроку, кон�
      ret
 endp
 
+proc ScreenMode03.DrawMouseCursor uses es eax edx ecx
+     ;esi - dx
+     ;edi - dy
+     ;xchg      bx, bx
+     mov       es, [ScreenMode03.Selector]
+     test      esi, edi
+     je        .EndProc    
+
+
+     mov       eax, [ScreenMode03.MouseCursorY]
+     mov       edx, ScreenMode03.Colms
+     mul       edx
+     add       eax, [ScreenMode03.MouseCursorX]
+     shl       eax, 1
+     inc       eax
+
+     mov       cl, [ScreenMode03.Attribute]
+     mov       [es:eax], cl 
+
+     add       [ScreenMode03.MouseCursorX], esi
+     cmp       [ScreenMode03.MouseCursorX], 0
+     jnl       @F
+     mov       [ScreenMode03.MouseCursorX], 0
+ @@:    
+     cmp       [ScreenMode03.MouseCursorX], ScreenMode03.Colms - 1
+     jng        @F
+     mov       [ScreenMode03.MouseCursorX], ScreenMode03.Colms - 1    
+@@: 
+     
+     add       [ScreenMode03.MouseCursorY], edi
+     cmp       [ScreenMode03.MouseCursorY], 0
+     jnl       @F
+     mov       [ScreenMode03.MouseCursorY], 0
+@@:    
+     cmp       [ScreenMode03.MouseCursorY], ScreenMode03.Rows - 1
+     jng        @F
+     mov       [ScreenMode03.MouseCursorY], ScreenMode03.Rows - 1     
+@@: 
+
+.EndProc:
+
+     mov       eax, [ScreenMode03.MouseCursorY]
+     mov       edx, ScreenMode03.Colms
+     mul       edx
+     add       eax, [ScreenMode03.MouseCursorX]
+     shl       eax, 1
+     inc       eax
+
+     mov       cl, [ScreenMode03.MouseAttribute]
+     mov       [es:eax], cl 
+
+     ret       
+endp
+
 ScreenMode03.CursorX      dd 0
 ScreenMode03.CursorY      dd 0
 ScreenMode03.Attribute    db $1e
+ScreenMode03.MouseAttribute db $4f
 ScreenMode03.Selector     dw 0
+
+ScreenMode03.MouseCursorX      dd 0
+ScreenMode03.MouseCursorY      dd 0
+
+

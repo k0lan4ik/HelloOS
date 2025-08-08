@@ -39,13 +39,7 @@ RealEntry:
         int 10h
         
         call CreateGDT_IDT
-        cli
-        mov eax, cr0
-        or  al,  1
-        mov cr0, eax
-        jmp 0x0008:0x0000
-
-
+        jmp GotoProtected 
 
 ; si - размер ос
 proc CreateGDT_IDT
@@ -107,19 +101,6 @@ proc CreateGDT_IDT
      mov       ebx, 0x0700
      mov       cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
-
-
-     xor       ax, ax
-     mov       es, ax
-     
-     mov word  [es:0x0580], 0x00FF
-     mov dword [es:0x0582], 0x0600
-     lgdt      [es:0x0580]
-
-     ; Загрузка IDT
-     mov word  [es:0x0586], 0x7FF
-     mov dword [es:0x0588], 0x0700
-     lidt      [es:0x0586]
    
      ret   
 endp 
@@ -156,6 +137,74 @@ proc CreateDescriptor;{Создание дескриптора в реально
     ret
 endp
 
+GotoProtected:   
+     xor       ax, ax
+     mov       es, ax       
+     mov       di, Options.Kernel.SDZSegment + 4
+     xor       ebx, ebx
+     xor       ebp, ebp
+     mov       edx, 0x0534D4150
+     mov       [es:di + 20], dword 1
+     mov       ecx, 24
+     mov       eax, 0xe820
+     int       15h
+     jc        .Error
+     
+     mov       edx, 0x0534D4150
+     cmp       eax, edx
+     jne       .Error
+
+     test      ebx, ebx
+     jz        .Error
+     jmp       .TestEntry
+
+.E820lp:
+	mov       [es:di + 20], dword 1
+	mov       ecx, 24	
+     mov       eax, 0xe820		
+     int       15h
+     jc        .E820f		
+	mov       edx, 0x0534D4150	
+.TestEntry:
+     jcxz      .SkipEntry
+     cmp       cl, 20
+     jbe       .NoText
+     test      byte [es:di + 20], 1
+     je        .SkipEntry
+.NoText:
+     mov       ecx, [es:di + 8]
+     or        ecx, [es:di + 12]
+     jz        .SkipEntry
+     cmp       dword [es:di + 16], 1
+   ;  xchg      bx, bx
+     jne       .SkipEntry
+     inc       ebp
+     add       di, 16
+.SkipEntry:
+	test      ebx, ebx		
+	jne       .E820lp
+.E820f:
+	mov       [es:Options.Kernel.SDZSegment], ebp
+     
+     mov word  [es:0x0580], 0x00FF
+     mov dword [es:0x0582], 0x0600
+     lgdt      [es:0x0580]
+
+     ; Загрузка IDT
+     mov word  [es:0x0586], 0x7FF
+     mov dword [es:0x0588], 0x0700
+     lidt      [es:0x0586] 	
+     
+     cli
+     mov       eax, cr0
+     or        al,  1
+     mov       cr0, eax
+     jmp       0x0008:0x0000
+
+.Error:
+     xchg      bx, bx
+     cli
+     hlt
 
 include 'macro\proc32.inc'
 
@@ -186,15 +235,105 @@ ProtectedEntry:
 
      mov        [ScreenMode03.Selector], 0x30
      
+     mov        edi, 0x38
+     mov        eax, -1
+     mov        ebx, 0     
+     mov        cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+     call       CreateDescriptor32
+
+
      call       ScreenMode03.Clear
 
      call       IRQ.Init
+     mov        ebx, 100000 ; 100 KHz
+     call       Timer.Init
      call       PS2.Init
+     
+     xor       edx, edx
+     mov       ecx, 4
+     call      ScreenMode03.SetCursor
      
      mov        esi, Str.Goida
      call       ScreenMode03.PrintString
-
+     
+     mov       ax, 0x38
+     mov       es, ax
 .WriteLoop:
+     push      [ScreenMode03.CursorX]
+     push      [ScreenMode03.CursorY]
+
+     xor       edx, edx
+     xor       ecx, ecx
+     call      ScreenMode03.SetCursor
+
+     mov       ebx, [PS2.Mouse.X]
+     call      HexPrint
+
+     xor       edx, edx
+     mov       ecx, 1
+     call      ScreenMode03.SetCursor
+
+     mov       ebx, [PS2.Mouse.Y]
+     call      HexPrint
+
+     xor       edx, edx
+     mov       ecx, 2
+     call      ScreenMode03.SetCursor
+     mov       ecx, [es:Options.Kernel.SDZSegment]
+     test      ecx, ecx
+     jz        .Zoc
+.PrintMem:
+     mov       edx, ecx
+     push      ecx
+     dec       edx
+     shl       edx, 4
+     mov       ebx, [es:Options.Kernel.SDZSegment + 4 + edx]
+     call      HexPrint
+
+     mov       al, ' '
+     call      ScreenMode03.PrintSymbol 
+
+     add       edx, 8
+     mov       ebx, [es:Options.Kernel.SDZSegment + 4 + edx]
+     call      HexPrint
+     
+     mov       al, ' '
+     call      ScreenMode03.PrintSymbol 
+
+     pop       ecx
+     loop      .PrintMem
+
+.Zoc:
+
+
+     xor       edx, edx
+     mov       ecx, 3
+     call      ScreenMode03.SetCursor
+
+     mov       ebx, [Timer.TimerMs]
+     call      HexPrint
+
+
+     pop       [ScreenMode03.CursorY]
+     pop       [ScreenMode03.CursorX]
+
+     mov       esi, [PS2.Mouse.X]
+     mov       edi, [PS2.Mouse.Y]
+
+     sub       esi, [Mouse.X]
+     add       [Mouse.X], esi
+     sar       esi, 1
+     sbb       [Mouse.X], 0
+
+
+     
+     sub       edi, [Mouse.Y]
+     add       [Mouse.Y], edi
+     sar       edi, 1
+     sbb       [Mouse.Y], 0
+
+     call      ScreenMode03.DrawMouseCursor
+     
      mov       eax, [PS2.KeyBufferTail]
      mov       edx, [PS2.KeyBufferHead]
      cmp       eax, edx
@@ -214,6 +353,7 @@ ProtectedEntry:
 @@:
      xchg      al, dl
      call      ScreenMode03.PrintSymbol
+
      jmp       .WriteLoop
 
 ;==============================================================================}
@@ -251,9 +391,10 @@ proc CreateDescriptor32 uses es;{Создание дескриптора в за
 endp
 
 proc HexPrint
-    mov     ecx, 4
+    pusha
+    mov     ecx, 8
 @@:
-    rol     bx, 4
+    rol     ebx, 4
     mov     ax, bx
     and     al, 0000'0000_0000'1111b
 
@@ -265,6 +406,7 @@ proc HexPrint
     call    ScreenMode03.PrintSymbol
 
     loop    @B
+    popa
     ret
 endp
 
@@ -308,7 +450,7 @@ proc IRQ.Init
 
      mov     ecx, 10
      xor     edx, edx
-     mov     esi, .data
+     mov     esi, .Data
 @@:  
      lodsw
      mov     dl, al
@@ -319,7 +461,7 @@ proc IRQ.Init
      loop    @B
      ret
 
-.data:  ; Данные для отправки команд
+.Data:  ; Данные для отправки команд
         db      PIC1_COMMAND, ICW1_INIT + ICW1_ICW4
         db      PIC2_COMMAND, ICW1_INIT + ICW1_ICW4
         db      PIC1_DATA,    0x20
@@ -328,13 +470,16 @@ proc IRQ.Init
         db      PIC2_DATA,    0x02
         db      PIC1_DATA,    ICW4_8086
         db      PIC2_DATA,    ICW4_8086
-        db      PIC1_DATA,    0xFF xor (IRQ_KEYB)
+        db      PIC1_DATA,    0xFF xor (IRQ_KEYB or IRQ_CASCADE or IRQ_TIMER)
         db      PIC2_DATA,    0xFF xor (IRQ_PS2)
 
 endp
 
 Str.Goida db "Hello OS x32", 13, 10, ">", 0
+Mouse.X dd 0
+Mouse.Y dd 0
 
 include 'Interrupt.asm'
+include 'Timer.asm'
 include 'ScreenMode03.asm'
 include 'PS2.asm'

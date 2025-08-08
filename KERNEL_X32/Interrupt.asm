@@ -4,7 +4,8 @@ use32
 
 
 proc Interrupt.Void
-    iret
+     xchg bx, bx
+     iretd
 endp
 
 proc Interrupt.Make;{ 
