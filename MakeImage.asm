@@ -248,7 +248,7 @@ Continue:
         mov     ax, [bx + 30]
         mov     [data_kernel_size + 2], ax
         mov     ax, [bx + 26]
-        mov     di, $4000 ; ??? ????????
+        mov     di, $0600 ; ??? ????????
 .LoadLoop:
         mov     bx, $8000
         add     bx, ax
@@ -288,7 +288,7 @@ Continue:
         jb      .LoadLoop
         mov     ax, [data_kernel_size]
         mov     dx, [data_kernel_size + 2]
-        jmp      $0400:$0000 ; ? ??? ????????
+        jmp      $0000:$0600 ; ? ??? ????????
 
 lba_to_chs:
         cmp     dx, [SectorsPerTrack]

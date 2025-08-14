@@ -1,13 +1,28 @@
         format binary as 'SYS'
         include 'proc16.inc'
+        include 'Blocks.inc'
+
 
 
 
 
 ; чтобы всё поместилось сделаю загрузку на 4000 ядра
+block(.consts) {
+GDT_NULL_SELECTOR     equ 0x00
+KERNEL_CODE_SELECTOR  equ 0x08
+KERNEL_DATA_SELECTOR  equ 0x10
+USER_CODE_SELECTOR    equ 0x18
+USER_DATA_SELECTOR    equ 0x20
+TSS_SELECTOR          equ 0x28
+Options.Kernel.Base     equ     $0600
+Options.Kernel.HierHalf equ     $C0000000
+}
+  include 'Structs.asm'
+  
 
-Options.Kernel.SDZSegment        equ     $0400
-
+block (.text) {
+use16
+org Options.Kernel.Base
 RealEntry:
      
         mov     si, dx
@@ -16,7 +31,7 @@ RealEntry:
 
         xor     ax, ax
         mov     ss, ax
-        mov     sp, (Options.Kernel.SDZSegment) shl 4
+        mov     sp, Options.Kernel.Base
         
         cli
         in      al, 92h
@@ -41,14 +56,13 @@ RealEntry:
         call CreateGDT_IDT
         jmp GotoProtected 
 
-; si - размер ос
+
 proc CreateGDT_IDT
 
-     mov       ax, 0x0060
+     xor       ax, ax
      mov       es, ax
-
-     xor       di, di
-     mov       cx, 0x100 / 2
+     mov       di, Real.GDT
+     mov       cx, 6 * 4
      xor       ax, ax
      rep stosw
 
@@ -70,38 +84,37 @@ proc CreateGDT_IDT
      loop      @B
 
 
-     mov       di, 8
+     mov       di, 8 + Real.GDT
 
      ; Код ядра
-     mov       eax, esi
-     mov       ebx, ProtectedEntry + Options.Kernel.SDZSegment shl 4
-     mov       cx,  0_1_0_0_0000_1_00_1_1000b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+     mov       eax, $000FFFFF
+     xor       ebx, ebx 
+     mov       cx,  1_1_0_0_0000_1_00_1_1010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
 
      ; Тоже, но для данных ядра
-     mov       eax, esi
-     mov       ebx, ProtectedEntry + Options.Kernel.SDZSegment shl 4
-     mov       cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+     mov       eax, $000FFFFF
+     xor       ebx, ebx
+     mov       cx,  1_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
 
-     ;Cтек
-     mov       eax, 0x2500
-     mov       ebx, (Options.Kernel.SDZSegment) shl 4 - 0x2500
-     mov       cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+     ; Пользовательский код
+     mov       eax, $000FFFFF
+     xor       ebx, ebx
+     mov       cx,  1_1_0_0_0000_1_11_1_1010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
-     
-     ;Сама GDT    
-     mov       eax, 0x0100
-     mov       ebx, 0x0600
-     mov       cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+
+     ; Тоже, но для данных ядра
+     xor       eax, eax 
+     mov       ebx, $000FFFFF
+     mov       cx,  1_1_0_0_0000_1_11_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
-     
-     ;IDT
-     mov       eax, 0x800
-     mov       ebx, 0x0700
-     mov       cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+
+     mov       eax, TSSend - TSS - 1
+     mov       ebx, TSS     
+     mov       cx,  0_0_0_0_0000_1_00_0_1001b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
-   
+
      ret   
 endp 
 
@@ -138,9 +151,8 @@ proc CreateDescriptor;{Создание дескриптора в реально
 endp
 
 GotoProtected:   
-     xor       ax, ax
-     mov       es, ax       
-     mov       di, Options.Kernel.SDZSegment + 4
+   
+     mov       di,  Options.Kernel.Base + 4
      xor       ebx, ebx
      xor       ebp, ebp
      mov       edx, 0x0534D4150
@@ -176,7 +188,6 @@ GotoProtected:
      or        ecx, [es:di + 12]
      jz        .SkipEntry
      cmp       dword [es:di + 16], 1
-   ;  xchg      bx, bx
      jne       .SkipEntry
      inc       ebp
      add       di, 16
@@ -184,22 +195,24 @@ GotoProtected:
 	test      ebx, ebx		
 	jne       .E820lp
 .E820f:
-	mov       [es:Options.Kernel.SDZSegment], ebp
-     
-     mov word  [es:0x0580], 0x00FF
-     mov dword [es:0x0582], 0x0600
-     lgdt      [es:0x0580]
-
-     ; Загрузка IDT
-     mov word  [es:0x0586], 0x7FF
-     mov dword [es:0x0588], 0x0700
-     lidt      [es:0x0586] 	
+	mov       [es:Options.Kernel.Base], ebp
      
      cli
+
+     mov word  [es:Real.GDTptr], GDTend - GDT
+     mov dword [es:Real.GDTptr + 2], Real.GDT
+     lgdt      [es:Real.GDTptr]
+
+     ; Загрузка IDT
+     mov word  [es:Real.IDTptr], IDTend - IDT 
+     mov dword [es:Real.IDTptr + 2], Real.IDT
+     lidt      [es:Real.IDTptr] 	
+     
+     
      mov       eax, cr0
      or        al,  1
      mov       cr0, eax
-     jmp       0x0008:0x0000
+     jmp       0x0008:ProtectedEntry
 
 .Error:
      xchg      bx, bx
@@ -207,57 +220,101 @@ GotoProtected:
      hlt
 
 include 'macro\proc32.inc'
+use32
+
+proc Paging.Init 
+     push      ebp
+     mov       ebp, esp
+     push      edi ecx eax ebx
+     mov       edi, Real.PageDirectory
+     mov       ecx, 1024
+     mov       eax, 0x00000002 ; Supervisor, R/W, Not Present
+     rep stosd
+
+     mov       edi, Real.PageTable1
+     mov       ecx, 1024
+     xor       ebx, ebx
+
+.MapFirst4MB:
+     lea       eax, [edi + ecx*4 - 4]
+     mov       ebx, ecx
+     dec       ebx
+     shl       ebx, 12
+     or        ebx, 0x003
+
+     mov dword [eax], ebx 
+     loop      .MapFirst4MB
+
+     mov dword [Real.PageDirectory], Real.PageTable1 or 0x003
+
+     mov dword [Real.PageDirectory + (Options.Kernel.HierHalf shr 22) * 4], Real.PageTable1 or 0x003
+
+     mov       eax, Real.PageDirectory
+     mov       cr3, eax
+
+     mov       eax, cr0
+     or        eax, 0x80000000
+     mov       cr0, eax
+
+     add       dword[ebp + 4], Options.Kernel.HierHalf 
+
+     pop       ebx eax ecx edi ebp
+     ret
+endp
 
 ProtectedEntry:
-     org 0
      use32
 
-     mov        ax, 0x10
-     mov        ds, ax
-     mov        es, ax
+     mov       ax, KERNEL_DATA_SELECTOR
+     mov       ds, ax
+     mov       es, ax
+     mov       ss, ax
+     mov       esp, Options.Kernel.Base
+
+     mov       ax, 0
+     mov       fs, ax
+     mov       gs, ax
+
+     call      Paging.Init
+
+org Options.Kernel.HierHalf + $
      
+     
+     mov dword [GDTptr + 2], GDT
+     lgdt      [GDTptr]
 
-     mov        ax, 0x18
-     mov        ss, ax
-     mov        esp, 0x2500
+     
+     mov dword [IDTptr + 2], IDT
+     lidt      [IDTptr] 	
 
-     mov        ax, 0
-     mov        fs, ax
-     mov        gs, ax
-
+     jmp       KERNEL_CODE_SELECTOR:@F
+     
+@@:
+     mov ax, KERNEL_DATA_SELECTOR      
+     mov ds, ax
+     mov es, ax
+     mov fs, ax
+     mov gs, ax
+     mov ss, ax
+     add esp, Options.Kernel.HierHalf 
+     call      IRQ.Init
      sti
 
-     mov        edi, 0x30
-     mov        eax, 0x7FFF
-     mov        ebx, 0x0B8000     
-     mov        cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call       CreateDescriptor32
 
-     mov        [ScreenMode03.Selector], 0x30
-     
-     mov        edi, 0x38
-     mov        eax, -1
-     mov        ebx, 0     
-     mov        cx,  0_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call       CreateDescriptor32
+     call      TSS.Init
+     mov       ebx, 100000 ; 100 KHz
+     call      Timer.Init
+     call      PS2.Init
 
-
-     call       ScreenMode03.Clear
-
-     call       IRQ.Init
-     mov        ebx, 100000 ; 100 KHz
-     call       Timer.Init
-     call       PS2.Init
+     call      ScreenMode03.Clear
      
      xor       edx, edx
      mov       ecx, 4
      call      ScreenMode03.SetCursor
      
-     mov        esi, Str.Goida
-     call       ScreenMode03.PrintString
-     
-     mov       ax, 0x38
-     mov       es, ax
+     mov       esi, Str.Goida
+     call      ScreenMode03.PrintString
+     xchg      bx, bx
 .WriteLoop:
      push      [ScreenMode03.CursorX]
      push      [ScreenMode03.CursorY]
@@ -279,7 +336,7 @@ ProtectedEntry:
      xor       edx, edx
      mov       ecx, 2
      call      ScreenMode03.SetCursor
-     mov       ecx, [es:Options.Kernel.SDZSegment]
+     mov       ecx, [es:Options.Kernel.HierHalf + Options.Kernel.Base]
      test      ecx, ecx
      jz        .Zoc
 .PrintMem:
@@ -287,14 +344,14 @@ ProtectedEntry:
      push      ecx
      dec       edx
      shl       edx, 4
-     mov       ebx, [es:Options.Kernel.SDZSegment + 4 + edx]
+     mov       ebx, [es:Options.Kernel.HierHalf + Options.Kernel.Base + 4 + edx]
      call      HexPrint
 
      mov       al, ' '
      call      ScreenMode03.PrintSymbol 
 
      add       edx, 8
-     mov       ebx, [es:Options.Kernel.SDZSegment + 4 + edx]
+     mov       ebx, [es:Options.Kernel.HierHalf + Options.Kernel.Base + 4 + edx]
      call      HexPrint
      
      mov       al, ' '
@@ -356,39 +413,6 @@ ProtectedEntry:
 
      jmp       .WriteLoop
 
-;==============================================================================}
-proc CreateDescriptor32 uses es;{Создание дескриптора в защищённом режиме
-; --------------------------------------------------------
-; EAX - Лимит 20
-; EBX - Адрес 32
-; CX  - Конфигурация
-; EDI - Указатель на элемент GDT
-; --------------------------------------------------------
-     push  0x20
-     pop   es    
-     
-     stosw ; limit
-
-     xchg  eax, ebx
-     stosw ; address 0..15
-
-     shr   eax, 16
-     stosb ; addr 16..23
-
-     xchg  eax, ebx
-     mov   al, cl
-     stosb ; config low
-
-     shr   eax, 16
-     or    al, ch
-     stosb ; config + limit
-
-     xchg  eax, ebx
-     shr   ax, 8
-     stosb ; addr 24..31
-
-    ret
-endp
 
 proc HexPrint
     pusha
@@ -408,6 +432,17 @@ proc HexPrint
     loop    @B
     popa
     ret
+endp
+
+proc TSS.Init uses eax
+
+     mov       [TSS.SS0], KERNEL_DATA_SELECTOR
+     mov       [TSS.ESP0], 0x200
+     mov       [TSS.IOPB], TSSend - TSS
+     mov       ax, TSS_SELECTOR
+     ltr       ax
+
+     ret       
 endp
 
 proc IRQ.Init 
@@ -474,12 +509,24 @@ proc IRQ.Init
         db      PIC2_DATA,    0xFF xor (IRQ_PS2)
 
 endp
+}
 
+block(.initData){
 Str.Goida db "Hello OS x32", 13, 10, ">", 0
-Mouse.X dd 0
-Mouse.Y dd 0
-
+}
+block(.data){
+Mouse.X dd ?
+Mouse.Y dd ?
+Discriptor.Index dd ?
+}
 include 'Interrupt.asm'
 include 'Timer.asm'
 include 'ScreenMode03.asm'
 include 'PS2.asm'
+
+
+putBlocks .consts
+putBlocks .text
+putBlocks .initData
+putBlocks .data
+putBlocks .structs

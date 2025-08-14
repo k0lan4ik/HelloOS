@@ -1,7 +1,9 @@
 include 'macro\proc32.inc'
-
+include 'Blocks.inc'
 use32
 
+block(.consts) 
+{
 ;Порты контроллера PS/2
 PS2_DATA_PORT   equ 0x60
 PS2_STATUS_PORT equ 0x64
@@ -14,11 +16,11 @@ PS2_STATE_GOT_E0 equ 1
 ;Константы для очереди
 PS2_CMD_QUEUE_SIZE equ 16
 KEY_BUFFER_SIZE    equ 64
+}
 
 
 
-
-
+block(.text) {
 
 proc  PS2.Init;{ Инициализация PS2
      cli
@@ -60,8 +62,7 @@ proc  PS2.Init;{ Инициализация PS2
      mov       [PS2.ScancodeState], PS2_STATE_NORMAL
      mov       [PS2.Mouse.Cycle], 0
 
-     mov       ax, 0x28
-     mov       es, ax
+
      mov       esi, 0x21 * 8
      mov       eax, PS2.IRQ1Handler
      mov       dx, cs
@@ -205,7 +206,8 @@ proc PS2.ResendCurrentCommand
      call      PS2.CommandSucceeded
      ret     
 endp
-
+}
+block(.consts){
 ;                 ОБРАБОТЧИКИ ПРЕРЫВАНИЙ
 
 ;Флаги модификаторов (битовая маска)
@@ -220,6 +222,8 @@ SCANCODE_RSHIFT_PRESSED     equ 0x36
 SCANCODE_LCTRL_PRESSED      equ 0x1D
 SCANCODE_LALT_PRESSED       equ 0x38
 SCANCODE_CAPSLOCK_PRESSED   equ 0x3A
+}
+block(.text){
 
 proc PS2.IRQ1Handler 
      ;xchg bx, bx
@@ -465,7 +469,8 @@ proc PS2.AddExtendedCharToKeyBuffer uses ebx ecx edx
 .BufferFull:
      ret
 endp
-
+}
+block(.initData){
 ;Таблицы соответствия Скан-код -> ASCII
 PS2.ScancodeMapNormal:
     db  0, 27, '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 8, 9
@@ -505,6 +510,8 @@ PS2.ScancodeMapAltChars:
 PS2.ScancodeMapAltChars.End:
 ;Состояние клавиш-модификаторов
 PS2.ModifierState   db 0 ; Битовая маска флагов MOD_*
+}
+block(.text){
 
 proc PS2.IRQ12Handler 
 
@@ -567,31 +574,34 @@ proc PS2.IRQ12Handler
      popa
      iretd
 
-;Состояние мыши
-PS2.Mouse.Cycle     db 0    ; Текущий байт в 3-байтовом пакете (0, 1, 2)
-PS2.Mouse.Packet    db 0,0,0; Массив для хранения пакета
-PS2.Mouse.X         dd 0    ; Координата X
-PS2.Mouse.Y         dd 0    ; Координата Y
-PS2.Mouse.Buttons   db 0    ; Состояние кнопок
 
 endp
 
+}
+block(.data){
+;Состояние мыши
+PS2.Mouse.Cycle     db ?    ; Текущий байт в 3-байтовом пакете (0, 1, 2)
+PS2.Mouse.Packet    db ?,?,?; Массив для хранения пакета
+PS2.Mouse.X         dd ?    ; Координата X
+PS2.Mouse.Y         dd ?    ; Координата Y
+PS2.Mouse.Buttons   db ?    ; Состояние кнопок
 
 ;            ПЕРЕМЕННЫЕ
 ;Очередь команд
-PS2.CmdQueue:       times PS2_CMD_QUEUE_SIZE db 0
-PS2.CmdQueue.Head   dd 0
-PS2.CmdQueue.Tail   dd 0
+PS2.CmdQueue:       times PS2_CMD_QUEUE_SIZE db ?
+PS2.CmdQueue.Head   dd ?
+PS2.CmdQueue.Tail   dd ?
 
 ;Состояние текущей команды
-PS2.CurrentCommand  db 0
-PS2.RetryCount      db 0
+PS2.CurrentCommand  db ?
+PS2.RetryCount      db ?
 
 ;Конечный автомат для скан-кодов
-PS2.ScancodeState   db 0
+PS2.ScancodeState   db ?
 
 
 ;Выходной буфер для ОС
-PS2.KeyBuffer:       times KEY_BUFFER_SIZE db 0
-PS2.KeyBufferHead    dd 0
-PS2.KeyBufferTail    dd 0
+PS2.KeyBuffer:       times KEY_BUFFER_SIZE db ?
+PS2.KeyBufferHead    dd ?
+PS2.KeyBufferTail    dd ?
+}

@@ -2,17 +2,24 @@ include 'macro\proc32.inc'
 
 use32
 
+
+block(.consts) {
+SCREEN_MODE_03_MEMORY equ 0xB8000
+
 ScreenMode03.Rows = 25
 ScreenMode03.Colms = 80
+}
 
+block(.text) {
 proc ScreenMode03.Clear uses edi ecx es;{ Очистка экрана
-     mov  es, [ScreenMode03.Selector] 
+     mov  cx, KERNEL_DATA_SELECTOR
+     mov  es, cx
           
      mov  ecx, ScreenMode03.Rows * ScreenMode03.Colms
      mov  al,' '            
      mov  ah,[ScreenMode03.Attribute]
 
-     xor  edi, edi     
+     mov  edi, SCREEN_MODE_03_MEMORY;0xB0000     
      
      rep stosw
 
@@ -49,7 +56,8 @@ proc ScreenMode03.PrintSymbol ;{ Выводит символ в консоль
 
 .Print:
      push      es ecx edi edx
-     mov       es, [ScreenMode03.Selector] 
+     mov       cx, KERNEL_DATA_SELECTOR
+     mov       es, cx 
      mov       ecx, [ScreenMode03.CursorY]
 
      mov       ah, [ScreenMode03.Attribute]
@@ -61,6 +69,7 @@ proc ScreenMode03.PrintSymbol ;{ Выводит символ в консоль
      mov       edi, [ScreenMode03.CursorX]      
      add       edi, eax
      shl       edi, 1
+     add       edi, SCREEN_MODE_03_MEMORY
      xchg      eax, ecx
 
      stosw
@@ -127,7 +136,8 @@ proc ScreenMode03.DrawMouseCursor uses es eax edx ecx
      ;esi - dx
      ;edi - dy
      ;xchg      bx, bx
-     mov       es, [ScreenMode03.Selector]
+     mov       ax, KERNEL_DATA_SELECTOR
+     mov       es, ax
      test      esi, edi
      je        .EndProc    
 
@@ -140,7 +150,7 @@ proc ScreenMode03.DrawMouseCursor uses es eax edx ecx
      inc       eax
 
      mov       cl, [ScreenMode03.Attribute]
-     mov       [es:eax], cl 
+     mov       [es:eax + SCREEN_MODE_03_MEMORY], cl 
 
      add       [ScreenMode03.MouseCursorX], esi
      cmp       [ScreenMode03.MouseCursorX], 0
@@ -172,18 +182,22 @@ proc ScreenMode03.DrawMouseCursor uses es eax edx ecx
      inc       eax
 
      mov       cl, [ScreenMode03.MouseAttribute]
-     mov       [es:eax], cl 
+     mov       [es:eax + SCREEN_MODE_03_MEMORY], cl 
 
      ret       
 endp
+}
+block(.initData){
 
-ScreenMode03.CursorX      dd 0
-ScreenMode03.CursorY      dd 0
 ScreenMode03.Attribute    db $1e
 ScreenMode03.MouseAttribute db $4f
-ScreenMode03.Selector     dw 0
+}
+block(.data){
+ScreenMode03.CursorX      dd ?
+ScreenMode03.CursorY      dd ?
+ScreenMode03.Selector     dw ?
 
-ScreenMode03.MouseCursorX      dd 0
-ScreenMode03.MouseCursorY      dd 0
-
+ScreenMode03.MouseCursorX      dd ?
+ScreenMode03.MouseCursorY      dd ?
+}
 

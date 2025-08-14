@@ -1,6 +1,6 @@
 include 'macro\proc32.inc'
 
-
+block(.text){
  ;Input
  ; ebx   Desired PIT frequency in Hz
 proc Timer.Init
@@ -63,14 +63,11 @@ proc Timer.Init
      mov       al,00110100b       ;channel 0, lobyte/hibyte, rate generator
      out       0x43, al
 
-     mov       ax, [Timer.PITReloadValue]   
-     xchg      bx, bx     
+     mov       ax, [Timer.PITReloadValue]      
      out       0x40, al                      
      mov       al, ah                        
      out       0x40, al
 
-     mov       ax, 0x28
-     mov       es, ax
      mov       esi, 0x20 * 8
      mov       eax, Timer.IRQ0Handler
      mov       dx, cs
@@ -95,10 +92,13 @@ proc Timer.IRQ0Handler
      pop       ebx eax
      iretd
 endp
+}
+block(.data) {
 
-Timer.TimerFractions     dd 0
-Timer.TimerMs            dd 0
-Timer.IRQ0Fractions      dd 0
-Timer.IRQ0Ms             dd 0
-Timer.IRQ0Frequency      dd 0
-Timer.PITReloadValue     dw 0
+Timer.TimerFractions     dd ?
+Timer.TimerMs            dd ?
+Timer.IRQ0Fractions      dd ?
+Timer.IRQ0Ms             dd ?
+Timer.IRQ0Frequency      dd ?
+Timer.PITReloadValue     dw ?
+}
