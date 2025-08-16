@@ -187,10 +187,8 @@ GotoProtected:
      mov       ecx, [es:di + 8]
      or        ecx, [es:di + 12]
      jz        .SkipEntry
-     cmp       dword [es:di + 16], 1
-     jne       .SkipEntry
      inc       ebp
-     add       di, 16
+     add       di, 24
 .SkipEntry:
 	test      ebx, ebx		
 	jne       .E820lp
@@ -290,13 +288,16 @@ org Options.Kernel.HierHalf + $
      jmp       KERNEL_CODE_SELECTOR:@F
      
 @@:
-     mov ax, KERNEL_DATA_SELECTOR      
-     mov ds, ax
-     mov es, ax
-     mov fs, ax
-     mov gs, ax
-     mov ss, ax
-     add esp, Options.Kernel.HierHalf 
+     mov       ax, KERNEL_DATA_SELECTOR      
+     mov       ds, ax
+     mov       es, ax
+     mov       fs, ax
+     mov       gs, ax
+     mov       ss, ax
+     add       esp, Options.Kernel.HierHalf 
+     
+     mov dword [PageDirectory], 0x00000002
+     call      Interrupt.FaultsInit
      call      IRQ.Init
      sti
 
@@ -314,8 +315,9 @@ org Options.Kernel.HierHalf + $
      
      mov       esi, Str.Goida
      call      ScreenMode03.PrintString
-     xchg      bx, bx
 .WriteLoop:
+
+
      push      [ScreenMode03.CursorX]
      push      [ScreenMode03.CursorY]
 
@@ -340,10 +342,12 @@ org Options.Kernel.HierHalf + $
      test      ecx, ecx
      jz        .Zoc
 .PrintMem:
-     mov       edx, ecx
+     mov       eax, ecx
      push      ecx
-     dec       edx
-     shl       edx, 4
+     dec       eax
+     mov       edx, 24
+     mul       edx
+     xchg      edx, eax
      mov       ebx, [es:Options.Kernel.HierHalf + Options.Kernel.Base + 4 + edx]
      call      HexPrint
 
@@ -409,8 +413,7 @@ org Options.Kernel.HierHalf + $
      jmp       .WriteLoop
 @@:
      xchg      al, dl
-     call      ScreenMode03.PrintSymbol
-
+     call      ScreenMode03.PrintSymbol    
      jmp       .WriteLoop
 
 
@@ -441,6 +444,7 @@ proc TSS.Init uses eax
      mov       [TSS.IOPB], TSSend - TSS
      mov       ax, TSS_SELECTOR
      ltr       ax
+     ;stdcall   Pager.MapPage, eax, eax, eax
 
      ret       
 endp
@@ -523,7 +527,8 @@ include 'Interrupt.asm'
 include 'Timer.asm'
 include 'ScreenMode03.asm'
 include 'PS2.asm'
-
+include 'Memory/Pager.asm'
+include 'Memory/FramePool.asm'
 
 putBlocks .consts
 putBlocks .text

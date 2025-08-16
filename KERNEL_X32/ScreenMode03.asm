@@ -4,7 +4,7 @@ use32
 
 
 block(.consts) {
-SCREEN_MODE_03_MEMORY equ 0xB8000
+SCREEN_MODE_03_MEMORY equ 0xC00B8000 
 
 ScreenMode03.Rows = 25
 ScreenMode03.Colms = 80

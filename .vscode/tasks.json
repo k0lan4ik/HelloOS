@@ -6,7 +6,7 @@
             "type": "shell",
             "command": "${config:fasm.assemblerPath}\\FASM.exe",
             "args": [
-                "${file}"
+                "${workspaceFolder}\\KERNEL_X32\\KERNEL.asm"
             ],
             "group": {
                 "kind": "build",
