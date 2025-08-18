@@ -7,7 +7,7 @@ end virtual
 
 block(.text){
 proc KernelMemManager uses ebx
-     add       [Kernel.MaxMem], Kernel.MaxMem + 16
+     add       [Kernel.MaxMem], 16
      mov       ebx, [Kernel.MaxMem]
      add       ebx, 4095
      shr       ebx, 12
@@ -257,6 +257,113 @@ proc KernelMemManager.MemRes sizeInc uses edi
      stdcall   KernelMemManager.RFree eax
 
      add       [Kernel.MaxMem], edi 
+     ret
+endp
+
+proc KernelMemManager.Checkbounds uses edi esi ebx
+     mov       edi, [KernelMemManager.FreeSize]
+     sub       edi, [KernelMemManager.FreeCount]
+
+     mov       ebx, [KernelMemManager.UsedSize]
+     sub       ebx, [KernelMemManager.UsedCount]
+
+     cmp       edi, 5
+     jge       @F
+     mov       eax, [KernelMemManager.FreeSize]
+     shl       eax, 4
+           
+     stdcall   KernelMemManager.RMalloc eax
+
+     mov       edi, eax
+     mov       esi, [KernelMemManager.FreeList]
+     mov       ecx, [KernelMemManager.FreeSize]
+     shr       ecx, 2
+
+     rep       movsd
+
+     mov       edi, eax
+     stdcall   KernelMemManager.RFree   [KernelMemManager.FreeList]
+     mov       [KernelMemManager.FreeList], edi
+
+     shl       [KernelMemManager.FreeSize], 1     
+     jmp       .EndFree
+@@:
+     mov       eax, [KernelMemManager.FreeSize]
+     shr       eax, 2
+     add       eax, 16
+     cmp       edi, eax
+     jl        .EndFree
+     mov       eax, [KernelMemManager.FreeSize]
+     cmp       eax, 128
+     jle       .EndFree
+
+     mov       eax, [KernelMemManager.FreeSize]
+     shl       eax, 2
+           
+     stdcall   KernelMemManager.RMalloc eax
+
+     mov       edi, eax
+     mov       esi, [KernelMemManager.FreeList]
+     mov       ecx, [KernelMemManager.FreeSize]
+     shr       ecx, 3
+
+     rep       movsd
+     
+     mov       edi, eax
+     stdcall   KernelMemManager.RFree   [KernelMemManager.FreeList]
+     mov       [KernelMemManager.FreeList], edi
+
+     shr       [KernelMemManager.FreeSize], 1     
+.EndFree:
+     cmp       ebx, 5
+     jge       @F
+
+     mov       eax, [KernelMemManager.UsedSize]
+     shl       eax, 4
+           
+     stdcall   KernelMemManager.RMalloc eax
+
+     mov       edi, eax
+     mov       esi, [KernelMemManager.UsedList]
+     mov       ecx, [KernelMemManager.UsedSize]
+     shr       ecx, 2
+
+     rep       movsd
+
+     mov       edi, eax
+     stdcall   KernelMemManager.RFree   [KernelMemManager.UsedList]
+     mov       [KernelMemManager.UsedList], edi
+
+     shl       [KernelMemManager.FreeSize], 1     
+     jmp       .EndProc
+@@:
+     mov       eax, [KernelMemManager.UsedSize]
+     shr       eax, 2
+     add       eax, 16
+     cmp       ebx, eax
+     jl        .EndProc
+     mov       eax, [KernelMemManager.UsedSize]
+     cmp       eax, 128
+     jle       .EndProc  
+
+     mov       eax, [KernelMemManager.UsedSize]
+     shl       eax, 2
+           
+     stdcall   KernelMemManager.RMalloc eax
+
+     mov       edi, eax
+     mov       esi, [KernelMemManager.UsedList]
+     mov       ecx, [KernelMemManager.UsedSize]
+     shr       ecx, 3
+
+     rep       movsd
+     
+     mov       edi, eax
+     stdcall   KernelMemManager.RFree   [KernelMemManager.UsedList]
+     mov       [KernelMemManager.UsedList], edi
+
+     shr       [KernelMemManager.UsedSize], 1    
+.EndProc:
      ret
 endp
 
