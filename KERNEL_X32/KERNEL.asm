@@ -2,7 +2,24 @@
         include 'proc16.inc'
         include 'Blocks.inc'
 
-
+macro IDE.Write Value*
+{
+  local value, ofs, digit
+  value = Value
+  ofs = 15
+  repeat 16
+    digit = (value shr (ofs * 4)) and $F
+    if digit > 9
+      display digit + 'A' - 10
+    else
+      display digit + '0'
+    end if
+    if % = 8
+      display ''''
+    end if
+    ofs = ofs - 1
+  end repeat
+}
 
 
 
@@ -13,7 +30,7 @@ KERNEL_CODE_SELECTOR  equ 0x08
 KERNEL_DATA_SELECTOR  equ 0x10
 USER_CODE_SELECTOR    equ 0x18
 USER_DATA_SELECTOR    equ 0x20
-TSS_SELECTOR          equ 0x28
+TSS_SELECTOR          equ 0x18
 Options.Kernel.Base     equ     $0600
 Options.Kernel.HierHalf equ     $C0000000
 }
@@ -32,7 +49,7 @@ RealEntry:
         xor     ax, ax
         mov     ss, ax
         mov     sp, Options.Kernel.Base
-        
+
         cli
         in      al, 92h
         or      al, 2
@@ -52,7 +69,7 @@ RealEntry:
         mov dh,25              
         mov ah,02h               
         int 10h
-        
+
         call CreateGDT_IDT
         jmp GotoProtected 
 
@@ -97,6 +114,11 @@ proc CreateGDT_IDT
      xor       ebx, ebx
      mov       cx,  1_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
+     
+     mov       eax, TSSend - TSS - 1
+     mov       ebx, TSS     
+     mov       cx,  0_0_0_0_0000_1_00_0_1001b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+     call      CreateDescriptor
 
      ; Пользовательский код
      mov       eax, $000FFFFF
@@ -104,15 +126,10 @@ proc CreateGDT_IDT
      mov       cx,  1_1_0_0_0000_1_11_1_1010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
 
-     ; Тоже, но для данных ядра
+     ; Тоже, но для данных Пользователя
      xor       eax, eax 
      mov       ebx, $000FFFFF
      mov       cx,  1_1_0_0_0000_1_11_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-
-     mov       eax, TSSend - TSS - 1
-     mov       ebx, TSS     
-     mov       cx,  0_0_0_0_0000_1_00_0_1001b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
 
      ret   
@@ -151,7 +168,7 @@ proc CreateDescriptor;{Создание дескриптора в реально
 endp
 
 GotoProtected:   
-   
+       
      mov       di,  Options.Kernel.Base + 4
      xor       ebx, ebx
      xor       ebp, ebp
@@ -188,12 +205,16 @@ GotoProtected:
      or        ecx, [es:di + 12]
      jz        .SkipEntry
      inc       ebp
+     cmp       ebp, 5
+     jge       .E820f
      add       di, 24
 .SkipEntry:
 	test      ebx, ebx		
 	jne       .E820lp
 .E820f:
 	mov       [es:Options.Kernel.Base], ebp
+     
+
      
      cli
 
@@ -214,6 +235,17 @@ GotoProtected:
 
 .Error:
      xchg      bx, bx
+             pusha
+                     mov bx,0                 
+        mov dl,0                
+        mov dh,0              
+        mov ah,02h               
+        int 10h
+        mov     ax, $0e00 or 'E'
+        int     10h
+        xor     ax, ax
+        int     16h
+        popa
      cli
      hlt
 
@@ -363,7 +395,7 @@ org Options.Kernel.HierHalf + $
 
      pop       ecx
      loop      .PrintMem
-
+      
 .Zoc:
 
 
@@ -373,7 +405,7 @@ org Options.Kernel.HierHalf + $
 
      mov       ebx, [Timer.TimerMs]
      call      HexPrint
-
+     
 
      pop       [ScreenMode03.CursorY]
      pop       [ScreenMode03.CursorX]
@@ -396,10 +428,11 @@ org Options.Kernel.HierHalf + $
      call      ScreenMode03.DrawMouseCursor
      
      mov       eax, [PS2.KeyBufferTail]
+     
      mov       edx, [PS2.KeyBufferHead]
      cmp       eax, edx
      je        .WriteLoop
-     
+     IDE.Write $%
      mov       dl,  [PS2.KeyBuffer + eax]
      inc       eax
      and       eax, 63
@@ -409,10 +442,12 @@ org Options.Kernel.HierHalf + $
      jne       @F
      inc       eax
      and       eax, 63
+      
      mov       [PS2.KeyBufferTail], eax
      jmp       .WriteLoop
 @@:
      xchg      al, dl
+     
      call      ScreenMode03.PrintSymbol    
      jmp       .WriteLoop
 
@@ -513,6 +548,7 @@ proc IRQ.Init
         db      PIC2_DATA,    0xFF xor (IRQ_PS2)
 
 endp
+  
 }
 
 block(.initData){

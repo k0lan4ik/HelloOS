@@ -56,11 +56,15 @@ proc  PS2.Init;{ Инициализация PS2
      mov       al, 0xA8 
      call      PS2.SendCommand
      
-     mov       [PS2.CmdQueue.Head], 0
-     mov       [PS2.CmdQueue.Tail], 0
-     mov       [PS2.CurrentCommand], 0
+     xor       eax, eax
+
+     mov       [PS2.CmdQueue.Head], eax
+     mov       [PS2.CmdQueue.Tail], eax
+     mov       [PS2.KeyBufferHead], eax
+     mov       [PS2.KeyBufferTail], eax
+     mov       [PS2.CurrentCommand], al
      mov       [PS2.ScancodeState], PS2_STATE_NORMAL
-     mov       [PS2.Mouse.Cycle], 0
+     mov       [PS2.Mouse.Cycle], al
 
 
      mov       esi, 0x21 * 8

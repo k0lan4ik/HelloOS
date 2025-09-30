@@ -120,7 +120,7 @@ NumberOfHeads         dw NUMBER_OF_HEADS
 HiddenSectors         dd 0
 TotalSectorsBig       dd 0
 
-DriveNumber           db 80h
+DriveNumber           db 00h
 Reserved              db 0
 BootSignature         db 29h
 VolumeID              dd 12345678h
@@ -191,9 +191,9 @@ culinder:
 
         call    lba_to_chs
 
-        mov     al, 1
         call    read_sectors
         jc      ErrorDisk
+
         inc     cx
         cmp     cx, [SectorsPerFAT]
         jae     .load_size
@@ -206,10 +206,11 @@ culinder:
 @@:
         pusha
         call    lba_to_chs
-        mov     al, 1
         call    read_sectors
-        popa
         jc      ErrorDisk
+
+        popa
+        
         add     bx, $100
         add     ax, 1
         adc     dx, 0
@@ -234,6 +235,19 @@ DiskErr:
         int     16h
         int     19h
 ErrorDisk:
+        mov     bx, errorsrt2 + 1
+        mov     byte[bx], ah
+        and     byte[bx], $0F
+        add     byte[bx], '0'
+        shr     ah, 4
+        mov     byte[bx + 1], '0'
+        add     byte[bx + 1], ah
+        add     sp, 6
+        pop     di
+        mov     cx, [di]
+        mov     byte[bx + 2], '0'
+        add     byte[bx + 2], cl
+
         mov     si, errorsrt2
         jmp     DiskErr
 ErrorLBA:
@@ -270,12 +284,17 @@ Continue:
         call    lba_to_chs
 
         mov     bx, di
-        mov     al, 1
+
 
         call    read_sectors
         jc      ErrorDisk
+         
+        
+
         add     di, [BytesPerSector]
         pop     cx
+
+
         pop     dx
         pop     ax
         add     ax, 1
@@ -284,10 +303,11 @@ Continue:
         pop     bx
 
         mov     ax, [bx]
+        
         cmp     ax, $FFF8
         jb      .LoadLoop
-        mov     ax, [data_kernel_size]
-        mov     dx, [data_kernel_size + 2]
+        ;mov     ax, [data_kernel_size]
+        ;mov     dx, [data_kernel_size + 2]
         jmp      $0000:$0600 ; ? ??? ????????
 
 lba_to_chs:
@@ -320,6 +340,7 @@ read_sectors:
         xchg    cl, ch
         mov     dl, [DriveNumber]
         mov     dh, [heads]
+        mov     al, 1
         int     13h
         jc      .ReadTry
 .Exit:
@@ -337,10 +358,10 @@ print_string:
         jmp     .repeat
 
 DataStr:
-kern_filename       db 'KERNEL  SYS'
-errorsrt            db ' NotFound',0
-errorsrt3           db 'LBAtoCHS '
-errorsrt2           db 'Disk Error',0
+kern_filename       db 'KERNEL  SYS',0
+errorsrt:           ;db ' NotFound',0
+errorsrt3:           ;db 'LBAtoCHS '
+errorsrt2           db 'D',0,0,0,0;db 'Disk Error',0
 
     times 510-($-BootLoader) db 0
     dw 0xAA55

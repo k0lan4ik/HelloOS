@@ -92,21 +92,19 @@ proc ScreenMode03.PrintSymbol ;{ Выводит символ в консоль
      inc       [ScreenMode03.CursorY]
      cmp       [ScreenMode03.CursorY], ScreenMode03.Rows
      jb @F
-     push      es esi edi ecx eax
-     mov       es, [ScreenMode03.Selector] 
-     mov       [ScreenMode03.CursorY], ScreenMode03.Rows - 1
+     push      esi edi ecx eax
+     mov       [ScreenMode03.CursorY ], ScreenMode03.Rows - 1
      
      mov       al, ' '
      mov       ah, [ScreenMode03.Attribute] 
-     push      ds es
-     pop       ds
-     xor       edi, edi
+     mov       edi, SCREEN_MODE_03_MEMORY
      mov       esi, ScreenMode03.Colms * 2
+     add       esi, SCREEN_MODE_03_MEMORY
      mov       ecx, ScreenMode03.Colms * (ScreenMode03.Rows - 1)
      rep movsw
      mov       ecx, ScreenMode03.Colms
      rep stosw 
-     pop       ds eax ecx edi esi es
+     pop       eax ecx edi esi
 @@: 
      ret
 
