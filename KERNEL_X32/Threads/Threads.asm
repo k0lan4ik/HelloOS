@@ -152,6 +152,84 @@ proc Threads.Create process, pentry uses ebx edi
      ret
 endp
 
+proc Threads.Kill thread
+     cmp       word[thread], 0
+     je        .EndProc
+
+     stdcall   Mutex.Wait Threads.Mutex
+
+     movzx     eax, word[thread]
+     mul       ThreadSize
+
+     add       eax, [Threads.Threads]
+
+     cmp       byte [eax + Thread.State], THREAD_NONE
+     jne       .EndIfSt
+     cmp       byte [eax + Thread.State], THREAD_DEAD
+     jne       .EndIfSt
+     test      byte [eax + Thread.Killed], 1000:0000
+     jne       .EndIfSt
+     stdcall   Mutex.Release Threads.Mutex
+     jmp       .EndProc
+.EndIfSt:
+
+     or        byte [eax + Thread.Killed], 1000:0000
+     
+     cmp       word [eax + Thread.Next], 0
+     je        @F
+     movzx     edx, word [eax + Thread.Next]
+     imul      edx, edx, ThreadSize
+     add       edx, [Threads.Threads]
+     mov       cx,  word [eax + Thread.Previous]
+     mov       [edx + Thread.Previous], cx
+     jmp       .EndifNext
+@@:     
+     mov       edx, [eax + Thread.Type] 
+     and       edx, 01110000:00000000
+     shr       edx, 12
+
+     mov       cx, [thread]
+     cmp       word [Sched.End + edx * 2], cx
+     jne       .EndifNext
+     mov       ecx, [eax + Thread.Previous]
+     mov       dword [Sched.End + edx * 2], cx
+
+.EndifNext:
+
+     cmp       byte [eax + Thread.Previous], 0
+     je        @F
+     mov       edx, byte [eax + Thread.Next]
+     imul      edx, edx, ThreadSize
+     add       edx, [Threads.Threads]
+     mov       cx,  dword [eax + Thread.Next]
+     mov       [edx + Thread.Next], cx
+     jmp       .EndifPrev
+@@:     
+     mov       edx, [eax + Thread.Type] 
+     and       edx, 01110000:00000000
+     shr       edx, 12
+
+     mov       ecx, [thread]
+     cmp       dword [Sched.P + edx * 2], ecx
+     jne       .EndifPrev
+     mov       ecx, [eax + Thread.Next]
+     mov       dword [Sched.P + edx * 2], cx
+
+.EndifPrev:
+
+     mov       [eax + Thread.Next], 0
+     mov       [eax + Thread.Previous], 0
+
+     stdcall   Mutex.Release Threads.Mutex
+
+     int       31h
+
+     stdcall   Sched.Signal ProcessManager.TerminatorThread  
+
+.EndProc:     
+     ret
+endp
+
 }
 
 block(.initData){

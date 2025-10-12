@@ -68,16 +68,16 @@ proc Pager.MapPage uses ebx, todovirt, todophys, flags:DWORD
      and       ebx, PAGE_MASK
      shr       ebx, PAGE_SHIFT
 
-     test byte [PML2BASE + ebx], 1
+     test byte [PML2BASE + ebx  * 4], 1
      jnz       @F
-     ;stdcall   FramePool.GetFreePage
+     stdcall   FramePool.GetFreePage
      shl       eax, 12
      and       eax, 11111b
      mov       [PML2BASE + ebx], eax
 @@:
      mov       ebx, [todovirt]
      
-     test byte [PML2BASE + ebx], 1
+     test byte [PML1BASE + ebx * 4], 1
      jnz       .EndProc
 
      mov       eax, [todophys]
@@ -90,7 +90,7 @@ proc Pager.MapPage uses ebx, todovirt, todophys, flags:DWORD
      jz        @F
      or        eax, AL_FL_USERACC shl 1 
 @@:     
-     mov       [PML2BASE + ebx], eax
+     mov       [PML1BASE + ebx * 4], eax
          
 .EndProc:
      ret

@@ -141,13 +141,13 @@ proc Sched.HandlerInt
      stdcall   Sched.LoadThread edi
 
      mov       edx, cr3
-     add       eax, [Procces.Procces]
-     cmp       [eax + Procces.CR3], 0
+     add       eax, [Process.Process]
+     cmp       [eax + Process.CR3], 0
      jz       .NotNewProcc
-     cmp       [eax + Procces.CR3], edx
+     cmp       [eax + Process.CR3], edx
      je       .NotNewProcc
 
-     stdcall   Sched.SwitchTo [eax + Procces.CR3]
+     stdcall   Sched.SwitchTo [eax + Process.CR3]
 
 .NotNewProcc:
 
@@ -237,6 +237,46 @@ proc Sched.Check
      int 30h
      ret  
 endp
+
+
+proc Sched.Signal thread
+	stdcall   Mutex.Wait Threads.Mutex
+	
+     mov       eax, [thread]
+     mul       ThreadSize
+     add       eax, [Threads.Threads] 
+
+
+	cmp       [Threads.State + eax], THREAD_BLOCKED
+     jne       @F
+
+     mov       [Threads.State + eax], THREAD_AVAILABLE  
+     mov       edx, [eax + Thread.Type] 
+     and       edx, 01110000:00000000
+     shr       edx, 12   
+     mov       ecx, dword [Sched.P + edx * 2]
+     mov       [Threads.Next + eax], ecx
+     imul      ecx, ecx, ThreadSize
+     add       ecx, [Threads.Threads]
+     mov       ax, [thread]     
+     mov       [ecx + Thread.Previous], ax
+     mov       [Sched.P + edx * 2], ax
+     jmp       .EndIF
+@@:
+     cmp       [Threads.State + eax], THREAD_SWAPPEDBLOCKED 
+	jne       @F
+     mov       [Threads.State + eax], THREAD_SWAPPED
+     jmp       .EndIF
+@@:
+     or       [Threads.SignalWaiting + eax], 00001000:00000000
+
+.EndIF:
+     
+
+	stdcall   Mutex.Release Threads.Mutex
+     ret
+endp
+
 
 }
 
