@@ -1,12 +1,12 @@
 block(.structs){
 virtual at 0
     MemBlock.Size   dd ?
-    Memblock.Offset dd ?
+    MemBlock.Offset dd ?
 end virtual
 }
 
 block(.text){
-proc KernelMemManager uses ebx
+proc KernelMemManager.Init uses ebx
      add       [Kernel.MaxMem], 16
      mov       ebx, [Kernel.MaxMem]
      add       ebx, 4095
@@ -16,10 +16,10 @@ proc KernelMemManager uses ebx
 @@:
      push      ecx
      stdcall   FramePool.GetFreePage
-     stdcall   Pager.MapPage ebx, eax, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     stdcall   Pager.MapPage, ebx, eax, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      pop       ecx
      inc       ebx
-     loop      ecx
+     loop      @B
 
      mov       edx, [Kernel.MaxMem]
      mov       [KernelMemManager.FreeList], edx
@@ -39,40 +39,40 @@ proc KernelMemManager uses ebx
      add       [Kernel.MaxMem], 32768
 
      mov       eax, [KernelMemManager.FreeList]
-     mov       [eax + Memblock.Offset], eax
-     add       [eax + Memblock.Offset], 8 + 256
+     mov       [eax + MemBlock.Offset], eax
+     add       [eax + MemBlock.Offset], 8 + 256
 
      mov       ecx, [Kernel.MaxMem]
-     sub       ecx, [eax + Memblock.Offset]
+     sub       ecx, [eax + MemBlock.Offset]
      mov       [eax + MemBlock.Size], ecx
 
      mov       ecx, [KernelMemManager.FreeSize]
      shl       ecx, 3
      mov       [edx + MemBlock.Size], ecx
-     mov       [edx + Memblock.Offset], eax
+     mov       [edx + MemBlock.Offset], eax
 
      mov       [edx + 1 + MemBlock.Size], ecx
-     mov       [edx + 1 + Memblock.Offset], edx
+     mov       [edx + 1 + MemBlock.Offset], edx
 
      xor       eax, eax
      mov       [KernelMemManager.CurIndex], eax
 
-     stdcall   Mutex.Start KernelMemManager.Mutex
+     stdcall   Mutex.Start, KernelMemManager.Mutex
      ret
 endp    
 
 proc KernelMemManager.Malloc amount
-     stdcall   Mutex.Wait KernelMemManager.Mutex
-     stdcall   KernelMemManager.RMalloc [amout]
+     stdcall   Mutex.Wait, KernelMemManager.Mutex
+     stdcall   KernelMemManager.RMalloc, [amount]
      push      eax
-     stdcall   Mutex.Release KernelMemManager.Mutex
+     stdcall   Mutex.Release, KernelMemManager.Mutex
      pop       eax
      ret
 endp
 
-proc KernelMemManager.RMalloc amount uses ebx edi
-     add       [amout], 15
-     and       [amout], not 15
+proc KernelMemManager.RMalloc uses ebx edi, amount
+     add       [amount], 15
+     and       [amount], not 15
      
      mov       edx, -1
      mov       eax, [KernelMemManager.CurIndex]
@@ -99,8 +99,8 @@ proc KernelMemManager.RMalloc amount uses ebx edi
      loop      .SecSearch
 
 
-     stdcall   KernelMemManager.MemRes [amout]
-     stdcall   KernelMemManager.RMalloc [amout]
+     stdcall   KernelMemManager.MemRes, [amount]
+     stdcall   KernelMemManager.RMalloc, [amount]
      jmp       .EndProc
 
 .Found:
@@ -129,7 +129,7 @@ proc KernelMemManager.RMalloc amount uses ebx edi
      inc       [KernelMemManager.UsedCount]
      push      eax
      stdcall   KernelMemManager.Checkbounds
-     pop
+     pop       eax
 
 .EndProc:
      ret
@@ -142,15 +142,15 @@ proc KernelMemManager.Free what
      cmp       [KernelMemManager.UsedList], eax
      je        .EndProc
 
-     stdcall   Mutex.Wait KernelMemManager.Mutex 
-     stdcall   KernelMemManager.RFree [what] 
-     stdcall   Mutex.Release KernelMemManager.Mutex 
+     stdcall   Mutex.Wait, KernelMemManager.Mutex 
+     stdcall   KernelMemManager.RFree, [what] 
+     stdcall   Mutex.Release, KernelMemManager.Mutex 
      
 .EndProc:     
      ret     
 endp
 
-proc KernelMemManager.RFree what uses ebx edi esi
+proc KernelMemManager.RFree uses ebx edi esi, what
      
      mov       ecx, [KernelMemManager.UsedCount]
      mov       eax, [what]
@@ -221,7 +221,7 @@ proc KernelMemManager.RFree what uses ebx edi esi
      ret     
 endp
 
-proc KernelMemManager.MemRes sizeInc uses edi
+proc KernelMemManager.MemRes uses edi, sizeInc
      mov       edi, [Kernel.MaxMem]
      mov       ecx, edi
      dec       edi
@@ -237,8 +237,8 @@ proc KernelMemManager.MemRes sizeInc uses edi
      sub       ecx, edi
 @@:
      push      ecx
-     stdcall   FramePoolGetFreePage
-     stdcall   Pager.MapPage edi, eax, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     stdcall   FramePool.GetFreePage
+     stdcall   Pager.MapPage, edi, eax, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      pop       ecx
      inc       edi
      loop      @B
@@ -254,7 +254,7 @@ proc KernelMemManager.MemRes sizeInc uses edi
      
      inc       [KernelMemManager.UsedCount]
 
-     stdcall   KernelMemManager.RFree eax
+     stdcall   KernelMemManager.RFree, eax
 
      add       [Kernel.MaxMem], edi 
      ret
@@ -272,7 +272,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      mov       eax, [KernelMemManager.FreeSize]
      shl       eax, 4
            
-     stdcall   KernelMemManager.RMalloc eax
+     stdcall   KernelMemManager.RMalloc, eax
 
      mov       edi, eax
      mov       esi, [KernelMemManager.FreeList]
@@ -282,7 +282,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      rep       movsd
 
      mov       edi, eax
-     stdcall   KernelMemManager.RFree   [KernelMemManager.FreeList]
+     stdcall   KernelMemManager.RFree,   [KernelMemManager.FreeList]
      mov       [KernelMemManager.FreeList], edi
 
      shl       [KernelMemManager.FreeSize], 1     
@@ -300,7 +300,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      mov       eax, [KernelMemManager.FreeSize]
      shl       eax, 2
            
-     stdcall   KernelMemManager.RMalloc eax
+     stdcall   KernelMemManager.RMalloc, eax
 
      mov       edi, eax
      mov       esi, [KernelMemManager.FreeList]
@@ -310,7 +310,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      rep       movsd
      
      mov       edi, eax
-     stdcall   KernelMemManager.RFree   [KernelMemManager.FreeList]
+     stdcall   KernelMemManager.RFree,   [KernelMemManager.FreeList]
      mov       [KernelMemManager.FreeList], edi
 
      shr       [KernelMemManager.FreeSize], 1     
@@ -321,7 +321,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      mov       eax, [KernelMemManager.UsedSize]
      shl       eax, 4
            
-     stdcall   KernelMemManager.RMalloc eax
+     stdcall   KernelMemManager.RMalloc, eax
 
      mov       edi, eax
      mov       esi, [KernelMemManager.UsedList]
@@ -331,7 +331,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      rep       movsd
 
      mov       edi, eax
-     stdcall   KernelMemManager.RFree   [KernelMemManager.UsedList]
+     stdcall   KernelMemManager.RFree,   [KernelMemManager.UsedList]
      mov       [KernelMemManager.UsedList], edi
 
      shl       [KernelMemManager.FreeSize], 1     
@@ -349,7 +349,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      mov       eax, [KernelMemManager.UsedSize]
      shl       eax, 2
            
-     stdcall   KernelMemManager.RMalloc eax
+     stdcall   KernelMemManager.RMalloc, eax
 
      mov       edi, eax
      mov       esi, [KernelMemManager.UsedList]
@@ -359,7 +359,7 @@ proc KernelMemManager.Checkbounds uses edi esi ebx
      rep       movsd
      
      mov       edi, eax
-     stdcall   KernelMemManager.RFree   [KernelMemManager.UsedList]
+     stdcall   KernelMemManager.RFree,   [KernelMemManager.UsedList]
      mov       [KernelMemManager.UsedList], edi
 
      shr       [KernelMemManager.UsedSize], 1    

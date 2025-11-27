@@ -11,14 +11,13 @@ end virtual
 
 block(.text){
 proc FramePool.Init1 
-     mov       ecx, 2048
+     mov       ecx, 2047
      mov       eax, 0x100
      mov       edi, FramePool.ZeroTable 
 @@:
      stosd
      inc       eax
      loop      @B
-
      xor       ax, ax
      
      mov       [FramePool.ZeroRead], ax
@@ -41,16 +40,16 @@ proc FramePool.Init2
 
      stdcall   Mutex.Start, FramePool.BacklogMutex
 
-     stdcall   ProcessManager.CreateProcess 
+     stdcall   Process.Create
      mov       [cpr], ax
 
-     stdcall   ProcessManager.CreateThread, [cpr] FramePool.ZeroPageThread
-     mov       [FramePool.ZeroThread], eax
+     stdcall   Threads.Create, dword[cpr], FramePool.ZeroPageThread
+     mov       [FramePool.ZeroThread], ax
 
-     stdcall   ProcessManager.CreateThread, [cpr] FramePool.FreePageThread
-     mov       [FramePool.FreeThread], eax
+     stdcall   Threads.Create, dword[cpr], FramePool.FreePageThread
+     mov       [FramePool.FreeThread], ax
      
-     stdcall   ProcessManager.CreateThread, [cpr] FramePool.InitialFiller
+     stdcall    Threads.Create, dword [cpr] FramePool.InitialFiller
      ret
 endp
 
@@ -77,10 +76,11 @@ proc FramePool.GetFreePage
      stdcall   Sched.Yield, dword[FramePool.ZeroThread]
      jmp       @B
 .EndYeld:
-     
      movzx     eax, [FramePool.ZeroRead]
      inc       [FramePool.ZeroRead]
-     push dword [FramePool.ZeroTable + eax * 4]
+     shl       eax, 2
+     add       eax, FramePool.ZeroTable  
+     push dword [eax]
 
      stdcall   Mutex.Release, FramePool.ZeroMutex 
 
@@ -115,7 +115,9 @@ proc FramePool.FreePage phys
      movzx     eax, [FramePool.FreeWrite]
      inc       [FramePool.FreeWrite]     
      mov       edx, [phys]
-     mov       [FramePool.FreeTable + eax * 4], edx
+     shl       eax, 2
+     add       eax, FramePool.FreeTable 
+     mov       [eax], edx
 
      stdcall   Mutex.Release, FramePool.FreeMutex
      ret
@@ -128,13 +130,13 @@ proc FramePool.InitialFiller uses ebx
 .MemLoop:
      cmp       [E820.Entry.Type + ebx], 1
      jne       .NotPage
-     mov       eax, [E820.Entry.Start + ebx]       
+     mov       eax, dword[E820.Entry.Start + ebx]
      add       eax, 0xFFF         
      and       eax, 0xFFFFF000   
      shr       eax, 12   
      push      ecx   
-     mov       ecx, [E820.Entry.Start + ebx]    
-     add       ecx, [E820.Entry.Length + ebx]   
+     mov       ecx, dword[E820.Entry.Start + ebx]
+     add       ecx, dword[E820.Entry.Length + ebx]
      add       ecx, 0xFFF         
      and       ecx, 0xFFFFF000   
      shr       ecx, 12    
@@ -156,25 +158,25 @@ proc FramePool.InitialFiller uses ebx
      loop      .MemLoop
 
      stdcall   ProcessManager.GetCurrentThread
-     stdcall   ProcessManager.KillThread, eax  
+     stdcall   Threads.Kill, eax
 endp
 
 proc FramePool.FreePageThread
 .InfLoop:
 .MapLoop:
-     mov       eax, [FramePool.FreeWrite]
-     sub       eax, [FramePool.FreeRead]
+     movzx     eax, [FramePool.FreeWrite]
+     sub       ax, [FramePool.FreeRead]
      xor       edx, edx
      mov       ecx, 2048
      div       ecx
      cmp       edx, 16
      jle       .EndMap
      
-     stdcall   MutexWait, FramePool.BacklogMutex 
+     stdcall   Mutex.Wait, FramePool.BacklogMutex
      
      mov       ecx, 16
 @@:
-     mov       edx, [FramePool.FreeRead]
+     movzx     edx, [FramePool.FreeRead]
      inc       [FramePool.FreeRead]
      mov       ebx, [FramePool.FreeTable + edx]  
 
@@ -206,8 +208,8 @@ proc FramePool.ZeroPageThread
      endl
 .InfLoop:
 .MapLoop:
-     mov       eax, [FramePool.ZeroWrite]
-     sub       eax, [FramePool.ZeroRead]
+     movzx     eax, [FramePool.ZeroWrite]
+     sub       ax, [FramePool.ZeroRead]
      xor       edx, edx
      mov       ecx, 2048
      div       ecx
@@ -217,7 +219,7 @@ proc FramePool.ZeroPageThread
      cmp       [FramePool.BacklogPointer], 16
      jl        .MapLoop
 
-     stdcall   MutexWait, FramePool.BacklogMutex 
+     stdcall   Mutex.Wait, FramePool.BacklogMutex
 
      mov       ecx, 16
 @@:
@@ -226,7 +228,9 @@ proc FramePool.ZeroPageThread
      shl       eax, 2
      add       eax, [FramePool.Backlog]
      mov       edx, [eax]
-     mov       [phys + 16 - ecx], edx
+     neg       ecx
+     mov       [phys + 16 + ecx], edx
+     neg       ecx
 
      cmp       [FramePool.BacklogPointer], 0x4000
      jge       .Skip
@@ -241,7 +245,8 @@ proc FramePool.ZeroPageThread
      mov       eax, 0x10000
 @@: 
      push      ecx
-     stdcall   Pager.MapPage, eax, [phys + 16 - ecx], AL_FL_WRITABLE
+     neg       ecx
+     stdcall   Pager.MapPage, eax, [phys + 16 + ecx], AL_FL_WRITABLE
      pop       ecx
      inc       eax
      loop      @B     
@@ -252,7 +257,7 @@ proc FramePool.ZeroPageThread
      rep stosd
 
      mov       ecx, 16
-     mov       ebx, [FramePool.ZeroWrite]
+     movzx     ebx, [FramePool.ZeroWrite]
 @@: 
      mov       eax, 0x10000+16 
      sub       eax, ecx
@@ -262,7 +267,7 @@ proc FramePool.ZeroPageThread
      mov       [FramePool.ZeroTable + ebx], eax
      inc       ebx
      loop      @B      
-     mov       [FramePool.ZeroWrite], ebx
+     mov       [FramePool.ZeroWrite], bx
 
      jmp       .MapLoop
 .EndMap:

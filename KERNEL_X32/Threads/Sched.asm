@@ -14,7 +14,7 @@ block(.consts){
     
 }
 
-blok(.text){
+block(.text){
 
 proc Sched.HandlerInt
      push      gs
@@ -50,7 +50,7 @@ proc Sched.HandlerInt
      mov       gs, ax
 
 
-     stdcall   Mutex.Wait Threads.Mutex
+     stdcall   Mutex.Wait, Threads.Mutex
 
      stdcall   GS.Base
      mov       edx, eax
@@ -130,7 +130,7 @@ proc Sched.HandlerInt
      mov       ebx, [Sched.Idle]
 .EndFountThread:
 
-     stdcall   Mutex.Release Threads.Mutex
+     stdcall   Mutex.Release, Threads.Mutex
 
      mov       [edx + GS.CThread], ebx
      mov       edi, ebx
@@ -138,7 +138,7 @@ proc Sched.HandlerInt
      movzx      eax, word[edi + Thread.Pid] 
      mov       [edx + GS.CProcess], eax
 
-     stdcall   Sched.LoadThread edi
+     stdcall   Sched.LoadThread, edi
 
      mov       edx, cr3
      add       eax, [Process.Process]
@@ -147,7 +147,7 @@ proc Sched.HandlerInt
      cmp       [eax + Process.CR3], edx
      je       .NotNewProcc
 
-     stdcall   Sched.SwitchTo [eax + Process.CR3]
+     stdcall   Sched.SwitchTo, [eax + Process.CR3]
 
 .NotNewProcc:
 
@@ -201,7 +201,8 @@ proc Sched.Refill uses ecx edx
 endp
 
 proc Sched.Init
-     ;инициализация прервыаний
+     stdcall IntHeand.SetIntSave, 0x30, Sched.HandlerInt
+	stdcall IntHeand.SetIntSave, 0x31, Sched.Check
      ret
 endp
 
@@ -239,23 +240,24 @@ proc Sched.Check
 endp
 
 
-proc Sched.Signal thread
-	stdcall   Mutex.Wait Threads.Mutex
-	
-     mov       eax, [thread]
-     mul       ThreadSize
+proc Sched.Signal thread:WORD
+     stdcall   Mutex.Wait, Threads.Mutex
+        
+     movzx     eax, [thread]
+     mov       edx,  ThreadSize
+     mul       edx
      add       eax, [Threads.Threads] 
 
 
-	cmp       [Threads.State + eax], THREAD_BLOCKED
+     cmp       [Thread.State + eax], THREAD_BLOCKED
      jne       @F
 
-     mov       [Threads.State + eax], THREAD_AVAILABLE  
+     mov       [Thread.State + eax], THREAD_AVAILABLE
      mov       edx, [eax + Thread.Type] 
-     and       edx, 01110000:00000000
+     and       edx, 01110000_00000000b
      shr       edx, 12   
-     mov       ecx, dword [Sched.P + edx * 2]
-     mov       [Threads.Next + eax], ecx
+     movzx     ecx, word [Sched.P + edx * 2]
+     mov       [Thread.Next + eax], cx
      imul      ecx, ecx, ThreadSize
      add       ecx, [Threads.Threads]
      mov       ax, [thread]     
@@ -263,20 +265,114 @@ proc Sched.Signal thread
      mov       [Sched.P + edx * 2], ax
      jmp       .EndIF
 @@:
-     cmp       [Threads.State + eax], THREAD_SWAPPEDBLOCKED 
-	jne       @F
-     mov       [Threads.State + eax], THREAD_SWAPPED
+     cmp       [Thread.State + eax], THREAD_SWAPPEDBLOCKED
+        jne       @F
+     mov       [Thread.State + eax], THREAD_SWAPPED
      jmp       .EndIF
 @@:
-     or       [Threads.SignalWaiting + eax], 00001000:00000000
+     or       word[Thread.SignalWaiting + eax], 00001000_00000000b
 
 .EndIF:
      
 
-	stdcall   Mutex.Release Threads.Mutex
+     stdcall   Mutex.Release, Threads.Mutex
      ret
 endp
 
+proc Sched.Block uses ebx
+     stdcall   GS.Base
+     xchg      eax, ebx
+     stdcall   Mutex.Wait, Threads.Mutex
+     mov       eax, [ebx + GS.CThread]
+     mov       ecx, ThreadSize
+     mul       ecx
+     add       eax, [Threads.Threads]
+     test      word [eax + Thread.SignalWaiting], 00001000_00000000b
+     jnz       .Else
+
+     mov       byte [eax + Thread.State], THREAD_BLOCKED
+
+     stdcall   Mutex.Release, Threads.Mutex
+     
+     int       30h
+
+     jmp       .EndProc
+ .Else: 
+
+     or         word [eax + Thread.SignalWaiting], 00001000_00000000b
+     
+     stdcall   Mutex.Release, Threads.Mutex
+
+.EndProc:
+     ret
+endp
+
+proc Sched.Yield uses ebx, thread
+     
+     cmp       [thread], 0
+     jz        .EndProc
+     mov       eax, [thread]
+     mov       ecx, ThreadSize
+     mul       ecx
+     mov       ebx, [Threads.Threads]
+     add       ebx, eax
+     cmp       [ebx + Thread.State], SCHED_AVAILABLE
+     jne       .EndProc
+     cmp       [ebx + Thread.Quantum], 0
+     jbe       .EndProc
+
+     stdcall   Mutex.Wait, Threads.Mutex
+     cmp       [ebx + Thread.State], SCHED_AVAILABLE
+     jne       .Release
+     cmp       [ebx + Thread.Quantum], 0
+     jbe       .Release     
+
+     cmp       [ebx + Thread.Next], 0
+     jnz       @F
+     mov       ax, [ebx + Thread.Next]
+     mov       ecx, ThreadSize
+     mul       ecx
+     mov       edx, [Threads.Threads]
+     add       edx, eax
+     mov       ax, [ebx + Thread.Previous]
+     mov       [edx + Thread.Previous], ax
+@@:      
+
+     cmp       [ebx + Thread.Previous], 0
+     jnz       @F
+     mov       ax, [ebx + Thread.Previous]
+     mov       ecx, ThreadSize
+     mul       ecx
+     mov       edx, [Threads.Threads]
+     add       edx, eax
+     mov       ax, [ebx + Thread.Next]
+     mov       [edx + Thread.Next], ax
+@@:      
+
+     movzx     eax, word [ebx + Thread.Type]
+     and       ah, 01110000b
+     shr       ax, 12
+     movzx     edx, word [Sched.P + eax * 2]
+     mov       ecx, [thread]
+     mov       [Sched.P + eax * 2], cx
+     mov       word [edx + Thread.Next], dx
+     mov       word [edx + Thread.Previous], 0
+    
+     xchg      eax, edx
+     mov       edx, ThreadSize
+     mul       edx
+     mov       ebx, [Threads.Threads]
+     add       ebx, eax
+
+     mov       word [edx + Thread.Previous], cx
+
+.Release:     
+     stdcall   Mutex.Release, Threads.Mutex
+
+.EndProc:
+     int       30h
+     ret
+endp 
 
 }
 

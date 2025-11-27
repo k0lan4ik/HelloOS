@@ -11,7 +11,7 @@ proc Mutex.Stop mutex
      stdcall   Mutex.Wait, [mutex]
 endp
 
-proc Mutex.Wait mutex uses ebx
+proc Mutex.Wait uses ebx, mutex
      mov       ebx, [mutex]
      xor       al, al
 @@:

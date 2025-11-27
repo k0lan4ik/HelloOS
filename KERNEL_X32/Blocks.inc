@@ -31,13 +31,13 @@ macro putBlocks BlockType*
     irpv i , Blocks@ # BlockType \{ i \}
 }
 
-macro displayPnt 
-{
-    a = 8
-    c = $
-    repeat a
-    display (c mod 16) + '0'
-    c = c / 16
-    end repeat
-    display 13, 10
-}
+;macro displayPnt
+;{
+;    a = 8
+;    c = $
+;    repeat a
+;    display (c mod 16) + '0'
+;    c = c / 16
+;    end repeat
+;    display 13, 10
+;}

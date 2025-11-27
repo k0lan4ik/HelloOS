@@ -19,9 +19,20 @@ macro IDE.Write Value*
     end if
     ofs = ofs - 1
   end repeat
+  display 13,10
 }
 
-
+define DEBUG
+macro STOP_POINT {
+     match =DEBUG, DEBUG 
+     \{
+          rept 0 \\{
+     \}
+     match , 
+     \{
+          xchg bx, bx
+     \}
+}
 
 ; чтобы всё поместилось сделаю загрузку на 4000 ядра
 block(.consts) {
@@ -188,12 +199,12 @@ GotoProtected:
      jmp       .TestEntry
 
 .E820lp:
-	mov       [es:di + 20], dword 1
-	mov       ecx, 24	
-     mov       eax, 0xe820		
+     mov       [es:di + 20], dword 1
+     mov       ecx, 24       
+     mov       eax, 0xe820              
      int       15h
-     jc        .E820f		
-	mov       edx, 0x0534D4150	
+     jc        .E820f           
+     mov       edx, 0x0534D4150      
 .TestEntry:
      jcxz      .SkipEntry
      cmp       cl, 20
@@ -209,10 +220,10 @@ GotoProtected:
      jge       .E820f
      add       di, 24
 .SkipEntry:
-	test      ebx, ebx		
-	jne       .E820lp
+        test      ebx, ebx              
+        jne       .E820lp
 .E820f:
-	mov       [es:Options.Kernel.Base], ebp
+        mov       [es:Options.Kernel.Base], ebp
      
 
      
@@ -225,7 +236,7 @@ GotoProtected:
      ; Загрузка IDT
      mov word  [es:Real.IDTptr], IDTend - IDT 
      mov dword [es:Real.IDTptr + 2], Real.IDT
-     lidt      [es:Real.IDTptr] 	
+     lidt      [es:Real.IDTptr]         
      
      
      mov       eax, cr0
@@ -234,7 +245,7 @@ GotoProtected:
      jmp       0x0008:ProtectedEntry
 
 .Error:
-     xchg      bx, bx
+     STOP_POINT
              pusha
                      mov bx,0                 
         mov dl,0                
@@ -256,12 +267,18 @@ proc Paging.Init
      push      ebp
      mov       ebp, esp
      push      edi ecx eax ebx
-     mov       edi, Real.PageDirectory
+     mov       edi, PageDirectory
      mov       ecx, 1024
      mov       eax, 0x00000002 ; Supervisor, R/W, Not Present
      rep stosd
 
-     mov       edi, Real.PageTable1
+     mov       dword [PageDirectory + 0x3FF * 4], PageDirectory or 0x019
+     mov       dword [PageDirectory + 0x3F8 * 4], (P3 - Options.Kernel.HierHalf) or 0x019
+     mov       dword [PageDirectory + 0x200 * 4], (P2 - Options.Kernel.HierHalf) or 0x001
+     
+     IDE.Write  PageDirectory
+
+     mov       edi, PageTable1
      mov       ecx, 1024
      xor       ebx, ebx
 
@@ -275,11 +292,11 @@ proc Paging.Init
      mov dword [eax], ebx 
      loop      .MapFirst4MB
 
-     mov dword [Real.PageDirectory], Real.PageTable1 or 0x003
+     mov dword [PageDirectory], PageTable1 or 0x003
 
-     mov dword [Real.PageDirectory + (Options.Kernel.HierHalf shr 22) * 4], Real.PageTable1 or 0x003
+     mov dword [PageDirectory + (Options.Kernel.HierHalf shr 22) * 4], PageTable1 or 0x003
 
-     mov       eax, Real.PageDirectory
+     mov       eax, PageDirectory
      mov       cr3, eax
 
      mov       eax, cr0
@@ -304,7 +321,6 @@ ProtectedEntry:
      mov       ax, 0
      mov       fs, ax
      mov       gs, ax
-
      call      Paging.Init
 
 org Options.Kernel.HierHalf + $
@@ -315,7 +331,7 @@ org Options.Kernel.HierHalf + $
 
      
      mov dword [IDTptr + 2], IDT
-     lidt      [IDTptr] 	
+     lidt      [IDTptr]         
 
      jmp       KERNEL_CODE_SELECTOR:@F
      
@@ -328,13 +344,56 @@ org Options.Kernel.HierHalf + $
      mov       ss, ax
      add       esp, Options.Kernel.HierHalf 
      
-     mov dword [PageDirectory], 0x00000002
+     mov dword [0xfffff000], 0x00000002
+     
      call      Interrupt.FaultsInit
      call      IRQ.Init
      sti
 
 
      call      TSS.Init
+     stdcall   FramePool.Init1
+
+     ;Инициализация страници под procdata for this processor
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0xFF000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     ;Инициализация страниц под первые 12 потоков
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0xFE000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0xFE001, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0xFF002, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     ;Страница для первых N процессов
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0xFF102, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     ;тут вместо регистра надо адрес таблицы и IDT и GDT
+     stdcall   Pager.MapPage, 0xFF100, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     ;Переназначение таблицы
+     
+     
+     ; E820 memory map
+     stdcall   Pager.MapPage, 0xFF101, 0x2, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+
+     ; page fault handler table
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0xFF102, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     stdcall   GS.Init
+
+     stdcall   KernelMemManager.Init
+     STOP_POINT     
+     stdcall   ProcessManager.Init
+     stdcall   Sched.Init
+     
+     stdcall   FramePool.Init2
+
      mov       ebx, 100000 ; 100 KHz
      call      Timer.Init
      call      PS2.Init
@@ -432,7 +491,7 @@ org Options.Kernel.HierHalf + $
      mov       edx, [PS2.KeyBufferHead]
      cmp       eax, edx
      je        .WriteLoop
-     IDE.Write $%
+     ;IDE.Write $%
      mov       dl,  [PS2.KeyBuffer + eax]
      inc       eax
      and       eax, 63
@@ -552,6 +611,7 @@ endp
 }
 
 block(.initData){
+Kernel.MaxMem dd Kernel.EndMem 
 Str.Goida db "Hello OS x32", 13, 10, ">", 0
 }
 block(.data){
@@ -563,11 +623,23 @@ include 'Interrupt.asm'
 include 'Timer.asm'
 include 'ScreenMode03.asm'
 include 'PS2.asm'
+
 include 'Memory/Pager.asm'
 include 'Memory/FramePool.asm'
+include 'Memory/GS.asm'
+include 'Memory/KernelMemManager.asm'
+
+include 'Threads/Mutex.asm'
+include 'Threads/Process.asm'
+include 'Threads/ProcessManager.asm'
+include 'Threads/Sched.asm'
+include 'Threads/Threads.asm'
+
 
 putBlocks .consts
 putBlocks .text
 putBlocks .initData
 putBlocks .data
 putBlocks .structs
+Kernel.EndMem = $
+IDE.Write Kernel.EndMem

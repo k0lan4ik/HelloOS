@@ -19,22 +19,30 @@ proc Pager.Unmap virt
      mov       eax, [virt]
      shr       eax, PAGE_SHIFT
      and       eax, PAGE_MASK shr PAGE_SHIFT
-     test byte [eax + PML2BASE], 1
+     push      eax
+     add       eax, PML2BASE 
+     ;IDE.Write PML2BASE
+     test byte [eax], 1
+     pop       eax
      jnz       @F
      push      -1
      jmp       .EndProc  
 @@:
      mov       eax, [virt]
      and       eax, PAGE_MASK
-     test byte [eax + PML1BASE], 1
+     
+     test byte [eax], 1
+     pop       eax
      jnz       @F
      push      -1
      jmp       .EndProc  
 @@:
+     push      eax
+     add       eax, PML1BASE
+     and  byte [eax], 0xFD
      
-     and  byte [eax + PML1BASE], 0xFD
-     
-     mov       edx, [eax + PML1BASE]
+     mov       edx, [eax]
+     pop       eax
      shr       edx, 12
      push      edx
 
@@ -42,7 +50,10 @@ proc Pager.Unmap virt
      and       edx, (PAGE_MASK and (not ((1 shl PAGE_SHIFT) - 1)))
      mov       ecx, 1024
 @@:
-     test byte [PML1BASE + edx + ecx * 4 - 4], 1
+     push      edx
+     add       edx, PML1BASE
+     test byte [edx + ecx * 4 - 4], 1
+     pop       edx
      jnz       .EndProc
      
      loop      @B        
@@ -50,7 +61,8 @@ proc Pager.Unmap virt
      mov       eax, [virt]
      and       eax, PAGE_MASK
      shr       eax, PAGE_SHIFT
-     mov       edx, [PML2BASE + eax]
+     add       eax, PML2BASE
+     mov       edx, [eax]
      shr       edx, 12
 
      stdcall   Pager.Unmap, edx
@@ -64,24 +76,39 @@ proc Pager.Unmap virt
 endp
 
 proc Pager.MapPage uses ebx, todovirt, todophys, flags:DWORD
+     ;STOP_POINT
      mov       ebx, [todovirt]
      and       ebx, PAGE_MASK
      shr       ebx, PAGE_SHIFT
 
-     test byte [PML2BASE + ebx  * 4], 1
+     push      ebx
+     shl       ebx, 2
+     add       ebx, PML2BASE
+     test byte [ebx], 1
+     pop       ebx
      jnz       @F
      stdcall   FramePool.GetFreePage
      shl       eax, 12
-     and       eax, 11111b
-     mov       [PML2BASE + ebx], eax
+     or        eax, 11111b
+     push      ebx
+     shl       ebx, 2
+     add       ebx, PML2BASE
+     mov       [ebx], eax
+     pop       ebx
 @@:
      mov       ebx, [todovirt]
+     and       ebx, PAGE_MASK
      
-     test byte [PML1BASE + ebx * 4], 1
+     push      ebx
+     shl       ebx, 2
+     add       ebx, PML1BASE
+     test byte [ebx], 1
+     pop       ebx
      jnz       .EndProc
 
      mov       eax, [todophys]
      shl       eax, 12
+     or        eax, 0x0001
      test      [flags], AL_FL_WRITABLE
      jz        @F
      or        eax, AL_FL_WRITABLE shl 1
@@ -90,7 +117,10 @@ proc Pager.MapPage uses ebx, todovirt, todophys, flags:DWORD
      jz        @F
      or        eax, AL_FL_USERACC shl 1 
 @@:     
-     mov       [PML1BASE + ebx * 4], eax
+     
+     shl       ebx, 2
+     add       ebx, PML1BASE
+     mov       [ebx], eax
          
 .EndProc:
      ret

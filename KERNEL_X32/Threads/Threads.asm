@@ -50,8 +50,8 @@ end virtual
 
 block(.text){
 
-proc Threads.Create process, pentry uses ebx edi
-     stdcall Mutex.Wait Threads.Mutex
+proc Threads.Create  uses ebx edi esi, process:WORD, pentry
+     stdcall   Mutex.Wait, Threads.Mutex
      mov       ebx, [Threads.Threads]
      mov       ecx, -1
 @@:
@@ -71,44 +71,49 @@ proc Threads.Create process, pentry uses ebx edi
 @@:     
 
      movzx     edx, byte[ebx + eax + Thread.Type]
-     cmp       [Sched.P + edx * 4], 0
+     mov       esi, Sched.P
+     cmp       word[esi + edx * 4], 0
      jne       @F
      
      mov       word[ebx + eax + Thread.Next], 0
-     mov       [Sched.P + edx * 4], cx
-     mov       [Sched.End + edx * 4], cx
+     mov       esi, Sched.P
+     mov       [esi + edx * 4], cx
+
+     mov       esi, Sched.End
+     mov       [esi + edx * 4], cx
      
      jmp       .EndIfSh
 @@:
-     movzx     edi, [Sched.P + edx * 4]
+     mov       esi, Sched.P
+     movzx     edi, word[esi + edx * 4]
      mov       word[ebx + eax + Thread.Next], di
      add       edi, [Threads.Threads]
-     mov       [edi + Thread.Previous], ecx
-     mov       [Sched.P + edx * 4], ecx
+     mov       [edi + Thread.Previous], cx
+     mov       [esi + edx * 4], cx
 .EndIfSh:
      push      eax ecx
-     stdcall   Mutex.Release Threads.Mutex
+     stdcall   Mutex.Release, Threads.Mutex
      pop       ecx eax
      
-     mov       edi, [process]
+     mov       di, [process]
      mov       word[ebx + eax + Thread.Pid], di
      mov       byte[ebx + eax + Thread.Priority], 20
      mov       byte[ebx + eax + Thread.Quantum], 20
 
      mov       byte[ebx + eax + Thread.Unblock], 20
-     and       word[ebx + eax + Thread.Killed], 01110111:11111111b
+     and       word[ebx + eax + Thread.Killed], 01110111_11111111b
      mov       word[ebx + eax + Thread.Previous], 0 
      
      xchg      eax, edi
      cmp       [pentry], 0xF0000000
-     jb        @b
+     jb        @F
      
      push      ecx
-     stdcall   KernelMemManager.Malloc 8192
+     stdcall   KernelMemManager.Malloc, 8192
      pop       ecx
 
      mov       [ebx + edi + Thread.StackBase], eax
-     add       eax, 8160
+     add       eax, 8168
      mov       [ebx + edi + Thread.Stack], eax
      
      
@@ -118,32 +123,32 @@ proc Threads.Create process, pentry uses ebx edi
      mov       [ebx + edi + Thread.KernelStackBase], 0
      mov       [ebx + edi + Thread.KernelStack], 0
 
-     mov       [eax], 0
-     mov       [eax + 4], 0x30
+     mov       dword[eax], 0
+     mov       dword[eax + 4], 0x30
      mov       edx, [pentry]
-     mov       [eax + 8], edx 
-     mov       [eax + 12], 0x8
-     mov       [eax + 16], 0x40200
+     mov       [eax + 8], edx
+     mov       dword[eax + 12], 0x8
+     mov       dword[eax + 16], 0x40200
 
      jmp       .EndIfPR
 @@:
      push      ecx
-     stdcall   KernelMemManager.Malloc 8192
+     stdcall   KernelMemManager.Malloc, 8192
      pop       ecx
      
      mov       [ebx + edi + Thread.KernelStackBase], eax
      add       eax, 8160
      mov       [ebx + edi + Thread.KernelStack], eax
 
-     mov       [eax], 0
-     mov       [eax + 4], 0x30
+     mov       dword[eax], 0
+     mov       dword[eax + 4], 0x30
      mov       edx, [pentry]
-     mov       [eax + 8], edx 
-     mov       [eax + 12], 0x20
-     mov       [eax + 16], 0x40200
+     mov       dword[eax + 8], edx
+     mov       dword[eax + 12], 0x20
+     mov       dword[eax + 16], 0x40200
      mov       edx, [ebx + edi + Thread.Stack]
-     mov       [eax + 20], edx
-     mov       [eax + 20], 0x28
+     mov       dword[eax + 20], edx
+     mov       dword[eax + 24], 0x28
 
 .EndIfPR:
      
@@ -152,14 +157,15 @@ proc Threads.Create process, pentry uses ebx edi
      ret
 endp
 
-proc Threads.Kill thread
+proc Threads.Kill thread:WORD
      cmp       word[thread], 0
      je        .EndProc
 
-     stdcall   Mutex.Wait Threads.Mutex
+     stdcall   Mutex.Wait, Threads.Mutex
 
      movzx     eax, word[thread]
-     mul       ThreadSize
+     mov       edx, ThreadSize
+     mul       edx
 
      add       eax, [Threads.Threads]
 
@@ -167,13 +173,13 @@ proc Threads.Kill thread
      jne       .EndIfSt
      cmp       byte [eax + Thread.State], THREAD_DEAD
      jne       .EndIfSt
-     test      byte [eax + Thread.Killed], 1000:0000
+     test      byte [eax + Thread.Killed], 1000_0000b
      jne       .EndIfSt
-     stdcall   Mutex.Release Threads.Mutex
+     stdcall   Mutex.Release, Threads.Mutex
      jmp       .EndProc
 .EndIfSt:
 
-     or        byte [eax + Thread.Killed], 1000:0000
+     or        byte [eax + Thread.Killed], 1000_0000b
      
      cmp       word [eax + Thread.Next], 0
      je        @F
@@ -185,46 +191,46 @@ proc Threads.Kill thread
      jmp       .EndifNext
 @@:     
      mov       edx, [eax + Thread.Type] 
-     and       edx, 01110000:00000000
+     and       edx, 01110000_00000000b
      shr       edx, 12
 
      mov       cx, [thread]
      cmp       word [Sched.End + edx * 2], cx
      jne       .EndifNext
-     mov       ecx, [eax + Thread.Previous]
-     mov       dword [Sched.End + edx * 2], cx
+     mov       cx, [eax + Thread.Previous]
+     mov       word [Sched.End + edx * 2], cx
 
 .EndifNext:
 
      cmp       byte [eax + Thread.Previous], 0
      je        @F
-     mov       edx, byte [eax + Thread.Next]
+     movzx     edx, byte [eax + Thread.Next]
      imul      edx, edx, ThreadSize
      add       edx, [Threads.Threads]
-     mov       cx,  dword [eax + Thread.Next]
+     mov       cx,  word [eax + Thread.Next]
      mov       [edx + Thread.Next], cx
      jmp       .EndifPrev
 @@:     
      mov       edx, [eax + Thread.Type] 
-     and       edx, 01110000:00000000
+     and       edx, 01110000_00000000b
      shr       edx, 12
 
-     mov       ecx, [thread]
-     cmp       dword [Sched.P + edx * 2], ecx
+     mov       cx, [thread]
+     cmp       word [Sched.P + edx * 2], cx
      jne       .EndifPrev
-     mov       ecx, [eax + Thread.Next]
-     mov       dword [Sched.P + edx * 2], cx
+     mov       cx, [eax + Thread.Next]
+     mov       word [Sched.P + edx * 2], cx
 
 .EndifPrev:
 
      mov       [eax + Thread.Next], 0
      mov       [eax + Thread.Previous], 0
 
-     stdcall   Mutex.Release Threads.Mutex
+     stdcall   Mutex.Release, Threads.Mutex
 
      int       31h
 
-     stdcall   Sched.Signal ProcessManager.TerminatorThread  
+     stdcall   Sched.Signal, ProcessManager.TerminatorThread  
 
 .EndProc:     
      ret

@@ -1,12 +1,12 @@
 block(.consts){
-    MAX_PID 4095
-    MAX_TID 16383
+    MAX_PID equ 4095
+    MAX_TID equ 16383
 
 }
 
 block(.text){
 
-proc ProessManager.GetCurrentThread uses edx
+proc ProcessManager.GetCurrentThread uses edx
      stdcall   GS.Base
      xchg      eax, edx
      mov       eax, [edx + GS.CThread]
@@ -28,17 +28,17 @@ proc ProcessManager.GetName uses edx, process
 endp
 
 proc ProcessManager.Init
-     stdcall   Mutex.Start Threads.Mutex
-     stdcall   Mutex.Start Process.Mutex
-     stdcall   Mutex.Start Threads.Mutex
+     stdcall   Mutex.Start, Threads.Mutex
+     stdcall   Mutex.Start, Process.Mutex
+     stdcall   Mutex.Start, Threads.Mutex
 
-     stdcall   Threads.Create 0, ProcessManager.Idle
-     stdcall   Threads.Create 0, ProcessManager.Terminator
+     stdcall   Threads.Create, 0, ProcessManager.Idle
+     stdcall   Threads.Create, 0, ProcessManager.Terminator
      ret
 endp
 
 proc ProcessManager.Idle
-@@:	
+@@:     
      hlt
      jmp @B
 endp
@@ -50,7 +50,7 @@ proc ProcessManager.Terminator
     ret
 endp
 
-
+}
 
 block(.data){
     ProcessManager.TerminatorThread dw ?

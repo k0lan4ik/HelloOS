@@ -1,4 +1,6 @@
 block(.consts){
+
+
 Real.GDT       = GDT  - Options.Kernel.HierHalf
 Real.GDTend    = GDTend - Options.Kernel.HierHalf
 Real.GDTptr    = GDTptr - Options.Kernel.HierHalf
@@ -68,13 +70,11 @@ TSS:
      .SSP        dd ?
 TSSend:
 
-     times  (4096 - ($ mod 4096)) db ?
-
-
-PageDirectory:
-     times  4096 db ?
-PageTable1:
-     times  4096 db ?
-
+PageDirectory = 0x80000
+     
+PageTable1 = PageDirectory +  4096 * 4
+P2 =  PageTable1 + 4096 * 4  
+P3 = P2 + 4096 * 4
+     
 }
 
