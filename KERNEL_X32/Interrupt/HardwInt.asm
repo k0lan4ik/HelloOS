@@ -32,7 +32,7 @@ proc HardwInt.Init uses edi
      stdcall   IntHeand.SetIntSave, 46, HardwInt.14
      stdcall   IntHeand.SetIntSave, 47, HardwInt.15
 
-     Mutex.Start, HardwInt.Hand.Mutex
+     stdcall   Mutex.Start, HardwInt.Handler.Mutex
 
      ret
 endp 
@@ -44,7 +44,7 @@ proc HardwInt.WhaitForInt, hwint
 endp
 
 proc HardwInt.RegInt, hwint
-     stdcall   Mutex.Wait, HardwInt.Hand.Mutex
+     stdcall   Mutex.Wait, HardwInt.Handler.Mutex
      mov       eax, [hwint]
      mov       edx, HardwInt.Hand
 @@:
@@ -79,13 +79,13 @@ proc HardwInt.RegInt, hwint
      mov       [ecx * 4 + edx + HardwInt.Hand.Mutex], 1
      mov       [ecx * 4 + edx + HardwInt.Hand.Next], 0
 
-     stdcall   Mutex.Release, HardwInt.Hand.Mutex
+     stdcall   Mutex.Release, HardwInt.Handler.Mutex
 
      ret
 endp
 
 proc HardwInt.Fini
-     stdcall   Mutex.Stop, HardwInt.Hand.Mutex
+     stdcall   Mutex.Stop, HardwInt.Handler.Mutex
 
      mov       edx, 32
      mov       ecx, 48 - 32
@@ -172,28 +172,28 @@ HardwInt.GenHandler:
      mov       ebp, esp
      mov       eax, [ebp + 48]
 
-     stdcall   Mutex.Wait, HardwInt.Hand.Mutex
+     stdcall   Mutex.Wait, HardwInt.Handler.Mutex
      
      mov       edx, HardwInt.Hand
      cmp       [eax + edx + HardwInt.Hand.Mutex], 1
      jnz       @F
      mov       [eax + edx + HardwInt.Hand.Mutex], 0
      push      eax
-     stdcall   Sched.Signal, [eax + edx + HardwInt.Hand.Tid]
+     stdcall   Sched.Signal, dword[eax + edx + HardwInt.Hand.Tid]
      pop       eax
 @@:
      cmp       [eax + edx + HardwInt.Hand.Next], 0
      jz        .EndLoop
-     mov       eax, [eax + edx + HardwInt.Hand.Next]
+     movzx     eax, [eax + edx + HardwInt.Hand.Next]
      mov       [eax + edx + HardwInt.Hand.Mutex], 0
      push      eax
-     stdcall   Sched.Signal, [eax + edx + HardwInt.Hand.Tid]
+     stdcall   Sched.Signal, dword[eax + edx + HardwInt.Hand.Tid]
      pop       eax
      jmp       @B
 .EndLoop:
 
      push      eax
-     stdcall   Mutex.Relase, HardwInt.Hand.Mutex
+     stdcall   Mutex.Release, HardwInt.Handler.Mutex
      push      eax
      
      test      eax, eax
@@ -213,7 +213,7 @@ HardwInt.GenHandler:
 
 
 block(.data) {
-    HardwInt.Hand       db ? dup (HardwInt.Hand.Size * 64)  
-    HardwInt.Hand.Mutex db ?   
+    HardwInt.Hand       db (HardwInt.Hand.Size * 64) dup ? 
+    HardwInt.Handler.Mutex db ?   
 }
 

@@ -58,7 +58,7 @@ PT.New equ 0xFF300000
      mov       [Process.Process + eax + Process.CR3], ebx 
      mov       ebx, ecx
 
-     stdcall Mutex.Release, Process.Mutex
+     stdcall   Mutex.Release, Process.Mutex
 
      mov       eax, ecx
 .EndProc:     
@@ -66,19 +66,20 @@ PT.New equ 0xFF300000
 endp
 
 
-proc Process.Kill process
+proc Process.Kill process:WORD
      stdcall   Mutex.Wait, Process.Mutex
 
-     imul      eax, ProcessSize, [process]
+     movzx     edx, [process]
+     imul      eax, edx, ProcessSize 
      add       eax, [Process.Process]
 
      cmp       [eax + Process.Status], PROCESS_ACTIVE
      je        @F
-     stdcall   Mutex.Relase, Process.Mutex
+     stdcall   Mutex.Release, Process.Mutex
      jmp       .EndProc
  @@:    
      mov       [eax + Process.Status], PROCESS_DEAD
-     stdcall   Mutex.Relase Process.Mutex
+     stdcall   Mutex.Release, Process.Mutex
 
      int       31h
      stdcall   Sched.Signal, ProcessManager.TerminatorThread 

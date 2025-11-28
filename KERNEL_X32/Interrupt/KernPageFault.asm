@@ -16,7 +16,7 @@ proc KernPageFault.StaticDataFault, error, eeip, virt
      stdcall   FramePool.GetFreePage
      mov       edx, [virt]
      shr       edx, 12
-     stdcall   Pager.MapPage, edx, eax, AL_FL_WRITABLE | AL_FL_GLOBAL | AL_FL_NOEXEC
+     stdcall   Pager.MapPage, edx, eax, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      ret
 endp
 

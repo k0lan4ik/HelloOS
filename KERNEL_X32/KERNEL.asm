@@ -52,7 +52,6 @@ block (.text) {
 use16
 org Options.Kernel.Base
 RealEntry:
-     
         mov     si, dx
         shl     esi, 16
         mov     si, ax 
@@ -389,14 +388,14 @@ org Options.Kernel.HierHalf + $
 
      stdcall   IntHeand.Init
      stdcall   XInt.Init
-     stdcall   HardwInt.Init
-     stdcall   KernPageFault.Init
+     stdcall   HardwInt.Init       ;
+     stdcall   KernPageFault.Init  ;
 
-     stdcall   KernelMemManager.Init
+     stdcall   KernelMemManager.Init  ; 
      STOP_POINT     
 
-     stdcall   ProcessManager.Init
-     stdcall   Sched.Init
+     stdcall   ProcessManager.Init      ;
+     stdcall   Sched.Init               ;
      
      stdcall   FramePool.Init2
 
@@ -404,7 +403,7 @@ org Options.Kernel.HierHalf + $
 
      mov       ebx, 100000 ; 100 KHz
      call      Timer.Init
-     call      PS2.Init
+     ;call      PS2.Init
 
      call      ScreenMode03.Clear
      
@@ -643,6 +642,11 @@ include 'Threads/ProcessManager.asm'
 include 'Threads/Sched.asm'
 include 'Threads/Threads.asm'
 
+include 'Interrupt/IntHeand.asm'
+include 'Interrupt/XInt.asm'
+include 'Interrupt/HardwInt.asm' 
+include 'Interrupt/KernPageFault.asm'
+include 'Interrupt/Timer.asm'
 
 putBlocks .consts
 putBlocks .text

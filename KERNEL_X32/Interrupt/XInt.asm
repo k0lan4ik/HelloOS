@@ -11,25 +11,23 @@ proc XInt.Init
 
      mov       ecx, 32
 @@:
-     mov       [ecx * 4 + eax], XInt.Empty
+     mov       dword[ecx * 4 + eax], XInt.Empty
      loop      @B
 
      stdcall   IntHeand.SetIntSave, 0, XInt.Ex0
      stdcall   IntHeand.SetIntSave, 1, XInt.Ex1
-     stdcall   IntHeand.SetIntSave, 2, XInt.Ex2
+     stdcall   IntHeand.SetIntSave, 2, XInt.Nmi
      stdcall   IntHeand.SetIntSave, 3, XInt.Ex3
      stdcall   IntHeand.SetIntSave, 4, XInt.Ex4
      stdcall   IntHeand.SetIntSave, 5, XInt.Ex5
      stdcall   IntHeand.SetIntSave, 6, XInt.Ex6
      stdcall   IntHeand.SetIntSave, 7, XInt.Ex7
      stdcall   IntHeand.SetIntSave, 8, XInt.Ex8
-     stdcall   IntHeand.SetIntSave, 9, XInt.Ex9
      stdcall   IntHeand.SetIntSave, 10, XInt.Ex10
      stdcall   IntHeand.SetIntSave, 11, XInt.Ex11
      stdcall   IntHeand.SetIntSave, 12, XInt.Ex12
      stdcall   IntHeand.SetIntSave, 13, XInt.Ex13
      stdcall   IntHeand.SetIntSave, 14, XInt.Ex14
-     stdcall   IntHeand.SetIntSave, 15, XInt.Ex15
      stdcall   IntHeand.SetIntSave, 16, XInt.Ex16
      stdcall   IntHeand.SetIntSave, 17, XInt.Ex17
      stdcall   IntHeand.SetIntSave, 18, XInt.Ex18
@@ -63,7 +61,7 @@ proc XInt.Register, exception, handler
 @@:    
      mov       eax, [exception]
      mov       edx, [XInt.ExceptHandler]
-     mov       [edx + eax * 4], XInt.Empty
+     mov       dword[edx + eax * 4], XInt.Empty
 .EndProc:
      ret
 endp
@@ -80,13 +78,14 @@ proc XInt.DoBreakpoint, error, eip
      ret
 endp
 
+proc XInt.DoOverflow, error, eip
+     ret
+endp
+
 proc XInt.DoBoundRange, error, eip
      ret
 endp
 
-proc XInt.DoSimdFault, error, eip
-     ret
-endp
 
 proc XInt.DoSimdFault, error, eip
      ret
@@ -249,7 +248,8 @@ XInt.HandleNormal:
 XInt.Nmi:
 
     pushf
-    pusha ds es fs gs ss ax
+    pusha 
+    push ds es fs gs ss ax
 
     call  XInt.DoNmi
 
@@ -266,7 +266,6 @@ XInt.Ex1:
 }
 
 block(.data) {
-    XInt.ExceptHandler        dd ?  
-    HardwInt.Hand.Mutex db ?   
+    XInt.ExceptHandler        dd ?    
 }
 

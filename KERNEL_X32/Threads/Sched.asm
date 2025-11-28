@@ -58,7 +58,7 @@ proc Sched.HandlerInt
      imul      ebx, eax, ThreadSize
      add       ebx, [Threads.Threads]
 
-     test      dword [ebx + Thread.Killed], 10000000:00000000b
+     test      dword [ebx + Thread.Killed], 10000000_00000000b
      jnz       .EndIfKill
      cmp       byte  [ebx + Thread.State], THREAD_RUNNING
      jnz       .EndIfKill
@@ -71,7 +71,8 @@ proc Sched.HandlerInt
      and        cl, 01110000b
      shr       cx, 12
 
-     movzx     edi, word[Sched.End + ecx]
+     mov       edi, Sched.End
+     movzx     edi, word[edi + ecx]
      test      edi, edi 
      jz        .ElseIfEnd
 
@@ -83,12 +84,16 @@ proc Sched.HandlerInt
      mov       word [ebx + Thread.Next], 0
 
      mov       ax, [edx + GS.CThread]
-     mov       [Sched.End + ecx], ax
+     mov       edi, Sched.End
+     mov       [edi + ecx], ax
 
 .ElseIfEnd:
-     mov       ax, [edx + GS.CThread] 
-     mov       [Sched.P + ecx], ax
-     mov       [Sched.End + ecx], ax
+     mov       ax, [edx + GS.CThread]
+      
+     mov       edi, Sched.P
+     mov       [edi + ecx], ax
+     mov       edi, Sched.End
+     mov       [edi + ecx], ax
       
      mov       word [ebx + Thread.Next], 0
      mov       word [ebx + Thread.Previous], 0
@@ -96,8 +101,9 @@ proc Sched.HandlerInt
 .EndIfKill:
 
      mov       ecx, 4
-.LoopIfZero:     
-     mov       ebx, [Sched.P + ecx * 2 - 2]
+.LoopIfZero:  
+     mov       edi, Sched.P
+     movzx     ebx, word[edi + ecx * 2 - 2]
      add       ebx, [Threads.Threads]
      cmp       [ebx + Thread.Quantum], 0
      jne       .NotZero
@@ -108,7 +114,8 @@ proc Sched.HandlerInt
      mov       ecx, 4
 
 .LoopFountThread:
-     mov       ebx, [Sched.P + ecx * 2 - 2]
+     mov       edi, Sched.P
+     movzx     ebx, word[edi + ecx * 2 - 2]
      test      ebx, ebx
      je        .SkipFound
      add       ebx, [Threads.Threads]
@@ -116,7 +123,8 @@ proc Sched.HandlerInt
      jbe       .SkipFound
 
      mov       ax, [ebx + Thread.Next]
-     mov       [Sched.P + ecx * 2 - 2], ax
+     mov       edi, Sched.P
+     mov       [edi + ecx * 2 - 2], ax
      mov       word [eax + Thread.Previous], 0
      mov       word [ebx + Thread.Next], 0
      mov       byte [ebx + Thread.State], THREAD_RUNNING
@@ -127,16 +135,16 @@ proc Sched.HandlerInt
      jmp       .EndFountThread
 .SkipFound:
      loop      .LoopFountThread
-     mov       ebx, [Sched.Idle]
+     movzx     ebx, [Sched.Idle]
 .EndFountThread:
 
      stdcall   Mutex.Release, Threads.Mutex
 
-     mov       [edx + GS.CThread], ebx
+     mov       [edx + GS.CThread], bx
      mov       edi, ebx
      add       edi, [Threads.Threads]
      movzx      eax, word[edi + Thread.Pid] 
-     mov       [edx + GS.CProcess], eax
+     mov       [edx + GS.CProcess], ax
 
      stdcall   Sched.LoadThread, edi
 
@@ -180,11 +188,11 @@ proc Sched.HandlerInt
 endp
 
 proc Sched.Refill uses ecx edx
-     mov       ecx, [Sched.Maxthr]
+     movzx     ecx, [Sched.Maxthr]
 .AddToQueue:
      imul      edx, ecx, ThreadSize  
      add       edx, [Threads.Threads]
-     mov       eax, [edx + Threads.State]
+     movzx     eax, [edx + Thread.State]
      cmp       eax, THREAD_DEAD
      je        .SkipThread
      cmp       eax, THREAD_NEW
@@ -192,9 +200,9 @@ proc Sched.Refill uses ecx edx
      cmp       eax, THREAD_NONE
      je        .SkipThread
      
-     shr       [edx + Threads.State], 1
-     mov       eax, [edx + Threads.Priority]
-     add       [edx + Threads.State], eax
+     shr       [edx + Thread.State], 1
+     mov       al, [edx + Thread.Priority]
+     add       [edx + Thread.State], al
 .SkipThread:
      loop      .AddToQueue
      ret
@@ -207,7 +215,8 @@ proc Sched.Init
 endp
 
 proc Sched.SwitchTo creg
-     mov  cr3, [creg]
+     mov  eax, [creg] 
+     mov  cr3, eax
      ret
 endp
 
@@ -225,13 +234,13 @@ endp
 
 proc Sched.Check
      stdcall GS.Base
-     mov       edx, [eax + GS.CProcess]
+     movzx     edx, [eax + GS.CProcess]
      add       edx, [Process.Process]
      cmp       [edx + Process.Status], PROCESS_DEAD 
      je        .Do
-     mov       edx, [eax + GS.CThread]
+     movzx     edx, [eax + GS.CThread]
      add       edx, [Threads.Threads]
-     test      word[edx + Threads.Killed], 10000000:00000000b 
+     test      word[edx + Thread.Killed], 10000000_00000000b 
      je        .Do
      ret
 .Do:     
@@ -240,7 +249,7 @@ proc Sched.Check
 endp
 
 
-proc Sched.Signal thread:WORD
+proc Sched.Signal uses edi, thread:WORD
      stdcall   Mutex.Wait, Threads.Mutex
         
      movzx     eax, [thread]
@@ -255,18 +264,19 @@ proc Sched.Signal thread:WORD
      mov       [Thread.State + eax], THREAD_AVAILABLE
      mov       edx, [eax + Thread.Type] 
      and       edx, 01110000_00000000b
-     shr       edx, 12   
-     movzx     ecx, word [Sched.P + edx * 2]
+     shr       edx, 12  
+     mov       edi, Sched.P 
+     movzx     ecx, word [edi + edx * 2]
      mov       [Thread.Next + eax], cx
      imul      ecx, ecx, ThreadSize
      add       ecx, [Threads.Threads]
      mov       ax, [thread]     
      mov       [ecx + Thread.Previous], ax
-     mov       [Sched.P + edx * 2], ax
+     mov       [Sched.P + edi * 2], ax
      jmp       .EndIF
 @@:
      cmp       [Thread.State + eax], THREAD_SWAPPEDBLOCKED
-        jne       @F
+     jne       @F
      mov       [Thread.State + eax], THREAD_SWAPPED
      jmp       .EndIF
 @@:
@@ -283,7 +293,7 @@ proc Sched.Block uses ebx
      stdcall   GS.Base
      xchg      eax, ebx
      stdcall   Mutex.Wait, Threads.Mutex
-     mov       eax, [ebx + GS.CThread]
+     movzx     eax, [ebx + GS.CThread]
      mov       ecx, ThreadSize
      mul       ecx
      add       eax, [Threads.Threads]
@@ -307,7 +317,7 @@ proc Sched.Block uses ebx
      ret
 endp
 
-proc Sched.Yield uses ebx, thread
+proc Sched.Yield uses ebx edi, thread
      
      cmp       [thread], 0
      jz        .EndProc
@@ -352,9 +362,10 @@ proc Sched.Yield uses ebx, thread
      movzx     eax, word [ebx + Thread.Type]
      and       ah, 01110000b
      shr       ax, 12
-     movzx     edx, word [Sched.P + eax * 2]
+     mov       edi, Sched.P
+     movzx     edx, word [edi + eax * 2]
      mov       ecx, [thread]
-     mov       [Sched.P + eax * 2], cx
+     mov       [edi + eax * 2], cx
      mov       word [edx + Thread.Next], dx
      mov       word [edx + Thread.Previous], 0
     

@@ -9,14 +9,15 @@ block(.text){
 proc ProcessManager.GetCurrentThread uses edx
      stdcall   GS.Base
      xchg      eax, edx
-     mov       eax, [edx + GS.CThread]
+     movzx     eax, [edx + GS.CThread]
      ret
 endp
 
 proc ProcessManager.GetProcess uses edx, thread
-     imul      edx, ThreadSize, [thread]  
+     mov       eax, [thread]
+     imul      edx, eax, ThreadSize   
      add       edx, [Threads.Threads]
-     movzx     eax, word[edx + Threads.Pid]   
+     movzx     eax, word[edx + Thread.Pid]   
      ret
 endp
 

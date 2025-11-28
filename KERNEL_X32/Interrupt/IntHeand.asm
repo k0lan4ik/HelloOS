@@ -1,3 +1,4 @@
+block(.text){
 proc IntHeand.Init
      mov  ecx, 0x100
 @@:
@@ -34,3 +35,4 @@ proc IntHeand.SetIntSave, interupt:BYTE, handler
      
      ret
 endp
+}

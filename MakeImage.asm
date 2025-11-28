@@ -1,5 +1,17 @@
 format binary
 
+;define DEBUG
+macro STOP_POINT {
+     match =DEBUG, DEBUG 
+     \{
+          rept 0 \\{
+     \}
+     match , 
+     \{
+          xchg bx, bx
+     \}
+}
+
 BYTES_PER_SECTOR      equ 512
 SECTORS_PER_CLUSTER   equ 1
 RESERVED_SECTORS      equ 1
@@ -130,6 +142,7 @@ FileSystemType        db 'FAT16   '
 start:
 
 root_dir_ofs:
+        STOP_POINT
         xor ax, ax
         mov ss, ax
         mov sp, 0x7C00
@@ -179,6 +192,7 @@ culinder:
 
         xor     cx, cx
 .load_size:
+        ;STOP_POINT
         xor     dx, dx
         mov     ax, [ReservedSectors]
         add     ax, cx
@@ -211,7 +225,7 @@ culinder:
 
         popa
         
-        add     bx, $100
+        add     bx, $200
         add     ax, 1
         adc     dx, 0
         loop    @B
@@ -256,7 +270,7 @@ ErrorLBA:
 
 
 Continue:
-
+        STOP_POINT
         mov     ax, [bx + 28]
         mov     [data_kernel_size], ax
         mov     ax, [bx + 30]
