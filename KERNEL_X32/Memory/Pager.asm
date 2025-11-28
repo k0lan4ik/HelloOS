@@ -11,6 +11,16 @@ block(.consts){
     PML2BASE        equ 0xFFFFF000
     PAGE_SHIFT      equ 10
     PAGE_MASK       equ 0xFFFFF
+
+virtual at 0
+     PageFault.Handler   dd ?
+     PageFault.MinVirt   dd ?
+     PageFault.MaxVirt   dd ?
+     PageFault.MinEIP    dd ?
+     PageFault.MaxEIP    dd ?
+     PageFault.Size:
+end virtual
+     PageFaults     equ 0xFF120000
 }
 
 block(.text){
@@ -126,4 +136,95 @@ proc Pager.MapPage uses ebx, todovirt, todophys, flags:DWORD
      ret
 endp
 
+
+proc Pager.Init uses ebx
+     mov       ecx, 16
+     mov       ebx, PageFaults
+@@:
+     mov       eax, PageFault.Size
+     mul       ecx
+     mov       [eax + PageFault.MinVirt], edx
+     mov       [eax + PageFault.MaxVirt], edx
+     mov       [eax + PageFault.MinEIP], edx
+     mov       [eax + PageFault.MaxEIP], edx
+     mov       [eax + PageFault.Handler], edx
+     loop      @B
+endp
+
+proc Pager.AddPFHandler uses ebx, handler, minvirt, maxvirt, mineip, maxeip
+     xor       ecx, ecx
+     dec       ecx
+     mov       ebx, PageFaults
+ @@:    
+     inc       ecx
+     mov       eax, PageFault.Size
+     mul       ecx
+     cmp       [eax + PageFault.Handler], 0
+     jnz       @B
+
+     mov       edx, [handler]
+     mov       [eax + PageFault.Handler], edx 
+     mov       edx, [minvirt]
+     mov       [eax + PageFault.MinVirt], edx
+     mov       edx, [maxvirt]
+     mov       [eax + PageFault.MaxVirt], edx
+     mov       edx, [mineip]
+     mov       [eax + PageFault.MinEIP], edx
+     mov       edx, [maxeip]
+     mov       [eax + PageFault.MaxEIP], edx
+
+     ret
+endp
+
+proc Pager.DeletePFHandler uses ebx, handler, minvirt, maxvirt, mineip, maxeip
+     xor       ecx, ecx
+     dec       ecx
+     mov       ebx, PageFaults
+ @@:    
+     inc       ecx
+     mov       eax, PageFault.Size
+     mul       ecx
+     mov       edx, [handler]
+     cmp       [eax + PageFault.Handler], edx
+     jz        @F
+     cmp       ecx, 8
+     jb        @B
+@@:
+     cmp       ecx, 8
+     jae       @F
+     xor       edx, edx
+     mov       [eax + PageFault.Handler], edx 
+     mov       [eax + PageFault.MinVirt], edx
+     mov       [eax + PageFault.MaxVirt], edx
+     mov       [eax + PageFault.MinEIP], edx
+     mov       [eax + PageFault.MaxEIP], edx
+@@:
+     ret
+endp
+
+proc Pager.HandlePF uses ebx edi, error, eeip
+     mov       edi, cr2
+     mov       ecx, 8
+     mov       ebx, PageFaults
+@@:
+     push      ecx
+     mov       eax, PageFault.Size
+     mul       ecx
+     cmp       [eax + PageFault.MinVirt], edi
+     jae       .SkipLoop  
+     cmp       [eax + PageFault.MaxVirt], edi
+     jbe       .SkipLoop  
+     mov       ecx, [eeip]
+     cmp       [eax + PageFault.MinEIP], ecx
+     jae       .SkipLoop  
+     cmp       [eax + PageFault.MaxEIP], ecx
+     jbe       .SkipLoop  
+     cmp       [eax + PageFault.Handler], 0
+     jz        .SkipLoop 
+     stdcall   [eax + PageFault.Handler], [error], ecx, edi
+.SkipLoop:
+     pop       ecx
+     loop      @B
+
+endp
 }

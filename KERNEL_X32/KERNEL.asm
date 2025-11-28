@@ -43,7 +43,7 @@ USER_CODE_SELECTOR    equ 0x18
 USER_DATA_SELECTOR    equ 0x20
 TSS_SELECTOR          equ 0x18
 Options.Kernel.Base     equ     $0600
-Options.Kernel.HierHalf equ     $C0000000
+Options.Kernel.HierHalf equ     $F0000000
 }
   include 'Structs.asm'
   
@@ -387,12 +387,20 @@ org Options.Kernel.HierHalf + $
      
      stdcall   GS.Init
 
+     stdcall   IntHeand.Init
+     stdcall   XInt.Init
+     stdcall   HardwInt.Init
+     stdcall   KernPageFault.Init
+
      stdcall   KernelMemManager.Init
      STOP_POINT     
+
      stdcall   ProcessManager.Init
      stdcall   Sched.Init
      
      stdcall   FramePool.Init2
+
+     ;timerzzz
 
      mov       ebx, 100000 ; 100 KHz
      call      Timer.Init
