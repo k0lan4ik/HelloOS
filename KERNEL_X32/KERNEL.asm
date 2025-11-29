@@ -39,9 +39,12 @@ block(.consts) {
 GDT_NULL_SELECTOR     equ 0x00
 KERNEL_CODE_SELECTOR  equ 0x08
 KERNEL_DATA_SELECTOR  equ 0x10
-USER_CODE_SELECTOR    equ 0x18
-USER_DATA_SELECTOR    equ 0x20
 TSS_SELECTOR          equ 0x18
+USER_CODE_SELECTOR    equ 0x20
+USER_DATA_SELECTOR    equ 0x28
+CPL0_PROCDATA         equ 0x30
+CPL0_THREAD           equ 0x38
+
 Options.Kernel.Base     equ     $0600
 Options.Kernel.HierHalf equ     $F0000000
 }
@@ -79,7 +82,7 @@ RealEntry:
         mov dh,25              
         mov ah,02h               
         int 10h
-
+        cli
         call CreateGDT_IDT
         jmp GotoProtected 
 
@@ -137,9 +140,19 @@ proc CreateGDT_IDT
      call      CreateDescriptor
 
      ; Тоже, но для данных Пользователя
-     xor       eax, eax 
-     mov       ebx, $000FFFFF
+     mov       eax, $000FFFFF 
+     xor       ebx, ebx
      mov       cx,  1_1_0_0_0000_1_11_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+     call      CreateDescriptor
+
+     mov       eax, $000FFFFF
+     mov       ebx, $FF000000
+     mov       cx,  1_1_0_0_0000_1_00_1_0011b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
+     call      CreateDescriptor
+
+     mov       eax, $0000FFFF
+     mov       ebx, $00050000
+     mov       cx,  1_1_0_0_0000_1_00_1_0011b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
 
      ret   
@@ -317,7 +330,7 @@ ProtectedEntry:
      mov       ss, ax
      mov       esp, Options.Kernel.Base
 
-     mov       ax, 0
+     mov       ax, CPL0_PROCDATA 
      mov       fs, ax
      mov       gs, ax
      call      Paging.Init
@@ -338,11 +351,10 @@ org Options.Kernel.HierHalf + $
      mov       ax, KERNEL_DATA_SELECTOR      
      mov       ds, ax
      mov       es, ax
-     mov       fs, ax
-     mov       gs, ax
      mov       ss, ax
      add       esp, Options.Kernel.HierHalf 
-     
+
+
      mov dword [0xfffff000], 0x00000002
      
      call      Interrupt.FaultsInit
@@ -382,18 +394,18 @@ org Options.Kernel.HierHalf + $
 
      ; page fault handler table
      stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0xFF102, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     stdcall   Pager.MapPage, 0xFF120, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      stdcall   GS.Init
-
+     
      stdcall   IntHeand.Init
      stdcall   XInt.Init
      stdcall   HardwInt.Init       ;
      stdcall   KernPageFault.Init  ;
 
      stdcall   KernelMemManager.Init  ; 
-     STOP_POINT     
-
+         
+     STOP_POINT 
      stdcall   ProcessManager.Init      ;
      stdcall   Sched.Init               ;
      

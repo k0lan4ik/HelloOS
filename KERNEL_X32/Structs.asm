@@ -16,7 +16,7 @@ block(.structs){
 
 
 GDT:
-     times 6 dq ?
+     times 10 dq ?
 GDTend:
 GDTptr:
     dw ?  

@@ -4,6 +4,7 @@ proc IntHeand.Init
 @@:
      stdcall IntHeand.SetIntSave, ecx, IntHeand.Void     
      loop @B
+     ret
 endp
 
 proc IntHeand.Void 
@@ -27,7 +28,7 @@ proc IntHeand.SetIntSave, interupt:BYTE, handler
 .EndIf:
 
      mov       word[edx], ax
-     shr       edx, 16
+     shr       eax, 16
      mov       word[edx + 6], ax
      mov       byte[edx + 5], 0x8E
      mov       word[edx + 3], 0

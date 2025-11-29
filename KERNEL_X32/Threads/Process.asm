@@ -23,7 +23,7 @@ PT.New equ 0xFF300000
      xchg      ebx, eax 
      
      stdcall Mutex.Wait, Process.ProcessMutex
-     stdcall Pager.MapPage, PT.New shr 4096, ebx, AL_FL_WRITABLE
+     stdcall Pager.MapPage, PT.New shr 12, ebx, AL_FL_WRITABLE
 
      mov       edi, PT.New + 0x380 * 4
      mov       esi, PT.Old + 0x380 * 4
@@ -41,7 +41,7 @@ PT.New equ 0xFF300000
      or        [PT.New + 0x1FF * 4], eax
      or        byte [PT.New + 0x1FF * 4], 0000_0011
      
-     stdcall Pager.Unmap, PT.New shr 4096
+     stdcall Pager.Unmap, PT.New shr 12
 
      stdcall Mutex.Release, Process.ProcessMutex
 
@@ -95,6 +95,8 @@ block(.initData){
 }
 
 block(.data){
+     IDE.Write $
      Process.ProcessMutex db ?
+     IDE.Write $
      Process.Mutex db ? 
 }

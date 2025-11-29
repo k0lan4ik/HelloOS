@@ -159,19 +159,19 @@ proc Pager.AddPFHandler uses ebx, handler, minvirt, maxvirt, mineip, maxeip
      inc       ecx
      mov       eax, PageFault.Size
      mul       ecx
-     cmp       [eax + PageFault.Handler], 0
+     cmp       [ebx + eax + PageFault.Handler], 0
      jnz       @B
 
      mov       edx, [handler]
-     mov       [eax + PageFault.Handler], edx 
+     mov       [ebx + eax + PageFault.Handler], edx 
      mov       edx, [minvirt]
-     mov       [eax + PageFault.MinVirt], edx
+     mov       [ebx + eax + PageFault.MinVirt], edx
      mov       edx, [maxvirt]
-     mov       [eax + PageFault.MaxVirt], edx
+     mov       [ebx + eax + PageFault.MaxVirt], edx
      mov       edx, [mineip]
-     mov       [eax + PageFault.MinEIP], edx
+     mov       [ebx + eax + PageFault.MinEIP], edx
      mov       edx, [maxeip]
-     mov       [eax + PageFault.MaxEIP], edx
+     mov       [ebx + eax + PageFault.MaxEIP], edx
 
      ret
 endp
@@ -185,7 +185,7 @@ proc Pager.DeletePFHandler uses ebx, handler, minvirt, maxvirt, mineip, maxeip
      mov       eax, PageFault.Size
      mul       ecx
      mov       edx, [handler]
-     cmp       [eax + PageFault.Handler], edx
+     cmp       [ebx + eax + PageFault.Handler], edx
      jz        @F
      cmp       ecx, 8
      jb        @B
@@ -193,11 +193,11 @@ proc Pager.DeletePFHandler uses ebx, handler, minvirt, maxvirt, mineip, maxeip
      cmp       ecx, 8
      jae       @F
      xor       edx, edx
-     mov       [eax + PageFault.Handler], edx 
-     mov       [eax + PageFault.MinVirt], edx
-     mov       [eax + PageFault.MaxVirt], edx
-     mov       [eax + PageFault.MinEIP], edx
-     mov       [eax + PageFault.MaxEIP], edx
+     mov       [ebx + eax + PageFault.Handler], edx 
+     mov       [ebx + eax + PageFault.MinVirt], edx
+     mov       [ebx + eax + PageFault.MaxVirt], edx
+     mov       [ebx + eax + PageFault.MinEIP], edx
+     mov       [ebx + eax + PageFault.MaxEIP], edx
 @@:
      ret
 endp
@@ -210,18 +210,18 @@ proc Pager.HandlePF uses ebx edi, error, eeip
      push      ecx
      mov       eax, PageFault.Size
      mul       ecx
-     cmp       [eax + PageFault.MinVirt], edi
+     cmp       [ebx + eax + PageFault.MinVirt], edi
      jae       .SkipLoop  
-     cmp       [eax + PageFault.MaxVirt], edi
+     cmp       [ebx + eax + PageFault.MaxVirt], edi
      jbe       .SkipLoop  
      mov       ecx, [eeip]
-     cmp       [eax + PageFault.MinEIP], ecx
+     cmp       [ebx + eax + PageFault.MinEIP], ecx
      jae       .SkipLoop  
-     cmp       [eax + PageFault.MaxEIP], ecx
+     cmp       [ebx + eax + PageFault.MaxEIP], ecx
      jbe       .SkipLoop  
-     cmp       [eax + PageFault.Handler], 0
+     cmp       [ebx + eax + PageFault.Handler], 0
      jz        .SkipLoop 
-     stdcall   [eax + PageFault.Handler], [error], ecx, edi
+     stdcall   [ebx + eax + PageFault.Handler], [error], ecx, edi
 .SkipLoop:
      pop       ecx
      loop      @B
