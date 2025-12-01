@@ -2,6 +2,7 @@ block(.structs){
 virtual at 0
     MemBlock.Size   dd ?
     MemBlock.Offset dd ?
+    MemBlock.StrucSize:
 end virtual
 }
 
@@ -23,7 +24,7 @@ proc KernelMemManager.Init uses ebx
 
      mov       edx, [Kernel.MaxMem]
      mov       [KernelMemManager.FreeList], edx
-     add       edx, 8 * 128
+     add       edx,  MemBlock.StrucSize * 128
      mov       [KernelMemManager.UsedList], edx
 
      mov       eax, 128
@@ -51,8 +52,8 @@ proc KernelMemManager.Init uses ebx
      mov       [edx + MemBlock.Size], ecx
      mov       [edx + MemBlock.Offset], eax
 
-     mov       [edx + 1 + MemBlock.Size], ecx
-     mov       [edx + 1 + MemBlock.Offset], edx
+     mov       [edx + 1 * MemBlock.StrucSize + MemBlock.Size], ecx
+     mov       [edx + 1 * MemBlock.StrucSize + MemBlock.Offset], edx
 
      xor       eax, eax
      mov       [KernelMemManager.CurIndex], eax
@@ -71,32 +72,47 @@ proc KernelMemManager.Malloc amount
 endp
 
 proc KernelMemManager.RMalloc uses ebx edi, amount
+     STOP_POINT
      add       [amount], 15
      and       [amount], not 15
      
-     mov       edx, -1
+
+
+     mov       eax, [KernelMemManager.FreeCount]
+     mov       edx,  MemBlock.StrucSize
+     imul      ecx,  eax, MemBlock.StrucSize
+
+
      mov       eax, [KernelMemManager.CurIndex]
-     mov       ecx, [KernelMemManager.FreeCount]
-     sub       ecx, eax
-     mov       ebx, [KernelMemManager.FreeList]
-     mov       edi, [amount]
+     mov       edx,  MemBlock.StrucSize
+     imul      edx,  eax, MemBlock.StrucSize
+
+     mov       edi, [ammout]
 .StartSearch:
-     cmp       [ebx + eax + MemBlock.Size], edi
-     jl        @F
-     mov       edx, eax
+     cmp       edx, ecx
+     jae       @F
+     cmp       [ebx + edx + MemBlock.Size], edi
+     jge       .Found
+
+     add       edx, MemBlock.StrucSize
+     jmp       .StartSearch
+
+@@:
+
+     mov       eax, [KernelMemManager.CurIndex]
+     mov       edx,  MemBlock.StrucSize
+     imul      eax,  eax, MemBlock.StrucSize
+     xor       edx, edx
+.SecSearch: 
+     cmp       edx, eax
+     jge       @F
+     cmp       [ebx + edx + MemBlock.Size], edi
+     jge       .Found
+
+     add       edx, MemBlock.StrucSize
      jmp       .Found
 @@:
-     inc       eax
-     loop      .StartSearch
-     
-     mov       ecx, [KernelMemManager.CurIndex]
-.SecSearch:     
-     cmp       [ebx + ecx - 1 + MemBlock.Size], edi
-     jl        @F
-     mov       edx, eax
-     jmp       .Found
-@@:
-     loop      .SecSearch
+ 
 
 
      stdcall   KernelMemManager.MemRes, [amount]
@@ -105,23 +121,32 @@ proc KernelMemManager.RMalloc uses ebx edi, amount
 
 .Found:
 
-     mov       [KernelMemManager.CurIndex], edx
+     push      edx
+     xor       eax, eax
+     xchg      eax, edx
+     mov       ecx, MemBlock.StrucSize
+     div       ecx
+     pop       edx
+     mov       [KernelMemManager.CurIndex], eax
      sub       [ebx + edx + MemBlock.Size], edi
      push      [ebx + edx + MemBlock.Offset]
-     add       [ebx + edx + MemBlock.Offset], edx
+     add       [ebx + edx + MemBlock.Offset], edi
 
      cmp       [ebx + edx + MemBlock.Size], 0
      jne       @F
      mov       eax, [KernelMemManager.FreeCount]
-     mov       ecx, [ebx + eax - 1 + MemBlock.Size]
+     dec       eax
+     imul      eax, eax, MemBlock.StrucSize
+     mov       ecx, [ebx + eax + MemBlock.Size]
      mov       [ebx + edx + MemBlock.Size], ecx
-     mov       ecx, [ebx + eax - 1 + MemBlock.Offset]
+     mov       ecx, [ebx + eax + MemBlock.Offset]
      mov       [ebx + edx + MemBlock.Offset], ecx 
      dec       [KernelMemManager.FreeCount]
 @@:
 
      mov       ebx, [KernelMemManager.UsedList]
      mov       edx, [KernelMemManager.UsedCount]
+     imul      edx, edx, MemBlock.StrucSize
      
      mov       [ebx + edx + MemBlock.Size], edi
      pop       eax
@@ -130,7 +155,7 @@ proc KernelMemManager.RMalloc uses ebx edi, amount
      push      eax
      stdcall   KernelMemManager.Checkbounds
      pop       eax
-
+     STOP_POINT
 .EndProc:
      ret
 endp
@@ -153,71 +178,92 @@ endp
 proc KernelMemManager.RFree uses ebx edi esi, what
      
      mov       ecx, [KernelMemManager.UsedCount]
+     imul      ecx, ecx, MemBlock.StrucSize
+     
      mov       eax, [what]
      mov       ebx, [KernelMemManager.UsedList]
+     xor       edx, edx
 .StartSearch:
-     cmp       [ebx + ecx - 1 + MemBlock.Offset], eax
-     je        .Found
-     loop      .StartSearch
-     jmp       .EndProc
+     cmp       edx, ecx
+     jge       .EndProc
+     
+     cmp       [ebx + edx + MemBlock.Offset], eax
+     jne       .StartSearch
 
 .Found:     
-     mov       esi, [ebx + ecx - 1 + MemBlock.Size]
-     mov       edi, [ebx + ecx - 1 + MemBlock.Offset]
+     mov       esi, [ebx + edx + MemBlock.Size]
+     mov       edi, [ebx + edx + MemBlock.Offset]
 
-     mov       edx, [KernelMemManager.UsedCount]
+     sub       ecx, MemBlock.StrucSize
      
-     mov       eax, [ebx + edx - 1 - MemBlock.Size]
-     mov       [ebx + ecx - 1 + MemBlock.Size], eax
+     mov       eax, [ebx + ecx - MemBlock.Size]
+     mov       [ebx + edx + MemBlock.Size], eax
      
-     mov       eax, [ebx + edx - 1 - MemBlock.Offset]
-     mov       [ebx + ecx - 1 + MemBlock.Offset], eax
+     mov       eax, [ebx + ecx - MemBlock.Offset]
+     mov       [ebx + edx + MemBlock.Offset], eax
 
      dec       [KernelMemManager.UsedCount]
 
      mov       ebx, [KernelMemManager.FreeList]
+     
      mov       ecx, [KernelMemManager.FreeCount]
-     mov       edx, [KernelMemManager.FreeCount]
+     imul      ecx, ecx, MemBlock.StrucSize
 
+     xor       edx, edx
 .Seek:
-     mov       eax, [ebx + ecx - 1 + MemBlock.Offset]
-     add       eax, [ebx + ecx - 1 + MemBlock.Size]
+     cmp       edx, ecx
+     jae       .EndSeek
+     
+     mov       eax, [ebx + edx + MemBlock.Offset]
+     add       eax, [ebx + edx + MemBlock.Size]
      cmp       eax, edi
      jne       @F
-     add       esi, [ebx + ecx - 1 + MemBlock.Size]
-     sub       edi, [ebx + ecx - 1 + MemBlock.Size]
+     add       esi, [ebx + edx + MemBlock.Size]
+     sub       edi, [ebx + edx + MemBlock.Size]
 
-     mov       eax, [ebx + edx - 1 + MemBlock.Offset]
-     mov       [ebx + ecx - 1 + MemBlock.Offset], eax
+     mov       eax, [ebx + ecx - MemBlock.StrucSize + MemBlock.Offset]
+     mov       [ebx + edx + MemBlock.Offset], eax
 
-     mov       eax, [ebx + edx - 1 + MemBlock.Size]
-     mov       [ebx + ecx - 1 + MemBlock.Size], eax
-     dec       edx
+     mov       eax, [ebx + ecx - MemBlock.StrucSize + MemBlock.Size]
+     mov       [ebx + edx + MemBlock.Size], eax
+     sub       ecx, MemBlock.StrucSize      
 @@:
-     mov       eax, edi
-     add       eax, esi
-     cmp       [ebx + ecx - 1 + MemBlock.Offset], eax
+     
+     lea       eax, [esi + edi]
+     cmp       [ebx + edx + MemBlock.Offset], eax
      jne       @F
      
-     add       esi, [ebx + ecx - 1 + MemBlock.Size]
+     add       esi, [ebx + edx + MemBlock.Size]
 
-     mov       eax, [ebx + edx - 1 + MemBlock.Offset]
-     mov       [ebx + ecx - 1 + MemBlock.Offset], eax
+     mov       eax, [ebx + ecx - MemBlock.StrucSize + MemBlock.Offset]
+     mov       [ebx + edx + MemBlock.Offset], eax
 
-     mov       eax, [ebx + edx - 1 + MemBlock.Size]
-     mov       [ebx + ecx - 1 + MemBlock.Size], eax
-     dec       edx 
+     mov       eax, [ebx + ecx - MemBlock.StrucSize + MemBlock.Size]
+     mov       [ebx + edx + MemBlock.Size], eax
+     sub       ecx, MemBlock.StrucSize 
 @@:
 
-     loop      .Seek
+     jmp       .Seek
+
+.EndSeek:
+
+     mov       eax, MemBlock.StrucSize
+     xchg      eax, ecx
+     xor       edx, edx
+     div       ecx
+     mov       [KernelMemManager.FreeCount]
+     
+
+
+.EndProc: 
 
      mov       [edx + edx + MemBlock.Size], esi
      mov       [edx + edx + MemBlock.Offset], edi
-     inc       edx
 
-     mov       [KernelMemManager.FreeCount], edx
+     inc       [KernelMemManager.FreeCount]
 
-.EndProc:     
+     stdcall   KernelMemManager.Checkbounds
+    
      ret     
 endp
 
@@ -245,7 +291,8 @@ proc KernelMemManager.MemRes uses edi, sizeInc
      
      mov       ecx, [KernelMemManager.UsedList]
      mov       edx, [KernelMemManager.UsedCount]
-     
+     imul      edx, edx, MemBlock.StrucSize
+
      mov       edi, [sizeInc]
      mov       [ecx + edx + MemBlock.Size], edi
      

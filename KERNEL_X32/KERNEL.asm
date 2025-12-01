@@ -285,10 +285,8 @@ proc Paging.Init
      rep stosd
 
      mov       dword [PageDirectory + 0x3FF * 4], PageDirectory or 0x019
-     mov       dword [PageDirectory + 0x3F8 * 4], (P3 - Options.Kernel.HierHalf) or 0x019
-     mov       dword [PageDirectory + 0x200 * 4], (P2 - Options.Kernel.HierHalf) or 0x001
-     
-     IDE.Write  PageDirectory
+     mov       dword [PageDirectory + 0x3F8 * 4], P3 or 0x019
+     mov       dword [PageDirectory + 0x200 * 4], P2 or 0x001
 
      mov       edi, PageTable1
      mov       ecx, 1024
@@ -405,7 +403,7 @@ org Options.Kernel.HierHalf + $
 
      stdcall   KernelMemManager.Init  ; 
          
-     STOP_POINT 
+
      stdcall   ProcessManager.Init      ;
      stdcall   Sched.Init               ;
      

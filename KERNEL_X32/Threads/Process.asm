@@ -21,14 +21,14 @@ PT.Old equ 0xFFFFF000
 PT.New equ 0xFF300000
      stdcall FramePool.GetFreePage
      xchg      ebx, eax 
-     
+     STOP_POINT
      stdcall Mutex.Wait, Process.ProcessMutex
      stdcall Pager.MapPage, PT.New shr 12, ebx, AL_FL_WRITABLE
 
-     mov       edi, PT.New + 0x380 * 4
-     mov       esi, PT.Old + 0x380 * 4
+     mov       edi, PT.New + 0x3C0 * 4
+     mov       esi, PT.Old + 0x3C0 * 4
 
-     mov       ecx, 0x3FF - 0x380
+     mov       ecx, 0x3FF - 0x3C0
      
      pushf
      cld
@@ -37,9 +37,9 @@ PT.New equ 0xFF300000
 
      mov       eax, ebx
      shl       eax, 12
-     and       dword[PT.New + 0x1FF * 4], 0x00000FFF
-     or        [PT.New + 0x1FF * 4], eax
-     or        byte [PT.New + 0x1FF * 4], 0000_0011
+     and       dword[PT.New + 0x3FF * 4], 0x00000FFF
+     or        [PT.New + 0x3FF * 4], eax
+     or        byte [PT.New + 0x3FF * 4], 0000_0011
      
      stdcall Pager.Unmap, PT.New shr 12
 
@@ -48,19 +48,20 @@ PT.New equ 0xFF300000
      stdcall Mutex.Wait, Process.Mutex
      
      xor       ecx, ecx
+     mov       edi, [Process.Process]
 @@:
      inc       ecx
      imul      eax, ecx, ProcessSize
-     cmp       [Process.Process + eax + Process.CR3], 0
+     cmp       [edi + eax + Process.CR3], 0
      jnz       @B
 
      shl       ebx, 12
-     mov       [Process.Process + eax + Process.CR3], ebx 
+     mov       [edi + eax + Process.CR3], ebx 
      mov       ebx, ecx
 
      stdcall   Mutex.Release, Process.Mutex
 
-     mov       eax, ecx
+     xchg      eax, ebx
 .EndProc:     
      ret
 endp
@@ -95,8 +96,6 @@ block(.initData){
 }
 
 block(.data){
-     IDE.Write $
      Process.ProcessMutex db ?
-     IDE.Write $
      Process.Mutex db ? 
 }

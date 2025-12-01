@@ -50,78 +50,77 @@ end virtual
 
 block(.text){
 
-proc Threads.Create  uses ebx edi esi, process:WORD, pentry
+IDE.Write $
+proc Threads.Create  uses ebx esi, process:WORD, pentry
      stdcall   Mutex.Wait, Threads.Mutex
      mov       ebx, [Threads.Threads]
-     mov       ecx, -1
+     sub       ebx, ThreadSize
+     mov       esi, - 1
 @@:
-     inc       ecx
-     mov       eax, ThreadSize
-     mul       ecx
+     
+     add       ebx, ThreadSize
+     inc       esi
 
-     cmp       [ebx + eax + Thread.State], THREAD_NONE
+     cmp       [ebx + Thread.State], THREAD_NONE
      jne       @B
 
-     mov       [ebx + eax + Thread.State], THREAD_NEW
-     and       byte[ebx + eax + Thread.Type], 10001111b
+     mov       [ebx + Thread.State], THREAD_NEW
+     and       byte[ebx + Thread.Type], 10001111b
      
      cmp       [process], 0
      jne  @F
-     or        byte[ebx + eax + Thread.Type], 00110000b
+     or        byte[ebx + Thread.Type], 00110000b
 @@:     
 
-     movzx     edx, byte[ebx + eax + Thread.Type]
-     mov       esi, Sched.P
-     cmp       word[esi + edx * 4], 0
+
+     movzx     edx, byte[ebx + Thread.Type]
+     mov       ecx, Sched.P
+     cmp       word[ecx + edx * 4], 0
      jne       @F
      
-     mov       word[ebx + eax + Thread.Next], 0
-     mov       esi, Sched.P
-     mov       [esi + edx * 4], cx
+     mov       word[ebx + Thread.Next], 0
+     mov       ecx, Sched.P
+     mov       [ecx + edx * 4], cx
 
-     mov       esi, Sched.End
-     mov       [esi + edx * 4], cx
+     mov       ecx, Sched.End
+     mov       [ecx + edx * 4], cx
      
      jmp       .EndIfSh
 @@:
-     mov       esi, Sched.P
-     movzx     edi, word[esi + edx * 4]
-     mov       word[ebx + eax + Thread.Next], di
-     add       edi, [Threads.Threads]
-     mov       [edi + Thread.Previous], cx
-     mov       [esi + edx * 4], cx
+     mov       ecx, Sched.P
+     movzx     eax, word[ecx + edx * 4]
+     mov       word[ebx + Thread.Next], ax
+     add       eax, [Threads.Threads]
+     mov       [eax + Thread.Previous], cx
+     mov       [eax + edx * 4], cx
 .EndIfSh:
-     push      eax ecx
+    
      stdcall   Mutex.Release, Threads.Mutex
-     pop       ecx eax
      
-     mov       di, [process]
-     mov       word[ebx + eax + Thread.Pid], di
-     mov       byte[ebx + eax + Thread.Priority], 20
-     mov       byte[ebx + eax + Thread.Quantum], 20
+     mov       ax, [process]
+     mov       word[ebx + Thread.Pid], ax
+     mov       byte[ebx + Thread.Priority], 20
+     mov       byte[ebx + Thread.Quantum], 20
 
-     mov       byte[ebx + eax + Thread.Unblock], 20
-     and       word[ebx + eax + Thread.Killed], 01110111_11111111b
-     mov       word[ebx + eax + Thread.Previous], 0 
+     mov       byte[ebx + Thread.Unblock], 20
+     and       word[ebx + Thread.Killed], 01110111_11111111b
+     mov       word[ebx + Thread.Previous], 0 
      
-     xchg      eax, edi
      cmp       [pentry], 0xF0000000
      jb        @F
      
-     push      ecx
      stdcall   KernelMemManager.Malloc, 8192
-     pop       ecx
-
-     mov       [ebx + edi + Thread.StackBase], eax
+    
+     mov       [ebx + Thread.StackBase], eax
      add       eax, 8168
-     mov       [ebx + edi + Thread.Stack], eax
+     mov       [ebx + Thread.Stack], eax
      
      
-     mov       [ebx + edi + Thread.ESP], eax
+     mov       [ebx + Thread.ESP], eax
 
 
-     mov       [ebx + edi + Thread.KernelStackBase], 0
-     mov       [ebx + edi + Thread.KernelStack], 0
+     mov       [ebx + Thread.KernelStackBase], 0
+     mov       [ebx + Thread.KernelStack], 0
 
      mov       dword[eax], 0
      mov       dword[eax + 4], 0x30
@@ -132,13 +131,11 @@ proc Threads.Create  uses ebx edi esi, process:WORD, pentry
 
      jmp       .EndIfPR
 @@:
-     push      ecx
      stdcall   KernelMemManager.Malloc, 8192
-     pop       ecx
      
-     mov       [ebx + edi + Thread.KernelStackBase], eax
+     mov       [ebx + Thread.KernelStackBase], eax
      add       eax, 8160
-     mov       [ebx + edi + Thread.KernelStack], eax
+     mov       [ebx + Thread.KernelStack], eax
 
      mov       dword[eax], 0
      mov       dword[eax + 4], 0x30
@@ -146,16 +143,17 @@ proc Threads.Create  uses ebx edi esi, process:WORD, pentry
      mov       dword[eax + 8], edx
      mov       dword[eax + 12], 0x20
      mov       dword[eax + 16], 0x40200
-     mov       edx, [ebx + edi + Thread.Stack]
+     mov       edx, [ebx + Thread.Stack]
      mov       dword[eax + 20], edx
      mov       dword[eax + 24], 0x28
 
 .EndIfPR:
      
-     mov       [ebx + edi + Thread.State], THREAD_AVAILABLE
-     xchg      eax, ecx
+     mov       [ebx + Thread.State], THREAD_AVAILABLE
+     xchg      eax, esi
      ret
 endp
+IDE.Write $
 
 proc Threads.Kill thread:WORD
      cmp       word[thread], 0
