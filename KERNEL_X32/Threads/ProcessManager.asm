@@ -32,7 +32,7 @@ proc ProcessManager.Init
      stdcall   Mutex.Start, Threads.Mutex
      stdcall   Mutex.Start, Process.Mutex
      stdcall   Mutex.Start, Process.ProcessMutex
-     
+
      stdcall   Threads.Create, 0, ProcessManager.Idle
      stdcall   Threads.Create, 0, ProcessManager.Terminator
      ret

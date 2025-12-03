@@ -38,20 +38,24 @@ proc KernelMemManager.Init uses ebx
      mov       [KernelMemManager.UsedCount], eax
 
      add       [Kernel.MaxMem], 32768
+     mov       ecx, [Kernel.MaxMem]
 
      mov       eax, [KernelMemManager.FreeList]
-     mov       [eax + MemBlock.Offset], eax
-     add       [eax + MemBlock.Offset], 8 + 256
+     mov       [eax + MemBlock.Offset], eax 
+     add       [eax + MemBlock.Offset], MemBlock.StrucSize * 256
 
-     mov       ecx, [Kernel.MaxMem]
      sub       ecx, [eax + MemBlock.Offset]
      mov       [eax + MemBlock.Size], ecx
+
+     mov       edx, [KernelMemManager.UsedList]
 
      mov       ecx, [KernelMemManager.FreeSize]
      shl       ecx, 3
      mov       [edx + MemBlock.Size], ecx
      mov       [edx + MemBlock.Offset], eax
 
+     mov       ecx, [KernelMemManager.UsedSize]
+     shl       ecx, 3 
      mov       [edx + 1 * MemBlock.StrucSize + MemBlock.Size], ecx
      mov       [edx + 1 * MemBlock.StrucSize + MemBlock.Offset], edx
 
@@ -72,22 +76,19 @@ proc KernelMemManager.Malloc amount
 endp
 
 proc KernelMemManager.RMalloc uses ebx edi, amount
-     STOP_POINT
      add       [amount], 15
      and       [amount], not 15
      
-
+     mov       ebx, [KernelMemManager.FreeList]
 
      mov       eax, [KernelMemManager.FreeCount]
-     mov       edx,  MemBlock.StrucSize
      imul      ecx,  eax, MemBlock.StrucSize
 
 
      mov       eax, [KernelMemManager.CurIndex]
-     mov       edx,  MemBlock.StrucSize
      imul      edx,  eax, MemBlock.StrucSize
 
-     mov       edi, [ammout]
+     mov       edi, [amount]
 .StartSearch:
      cmp       edx, ecx
      jae       @F
@@ -100,7 +101,6 @@ proc KernelMemManager.RMalloc uses ebx edi, amount
 @@:
 
      mov       eax, [KernelMemManager.CurIndex]
-     mov       edx,  MemBlock.StrucSize
      imul      eax,  eax, MemBlock.StrucSize
      xor       edx, edx
 .SecSearch: 
@@ -110,10 +110,8 @@ proc KernelMemManager.RMalloc uses ebx edi, amount
      jge       .Found
 
      add       edx, MemBlock.StrucSize
-     jmp       .Found
+     jmp       .SecSearch
 @@:
- 
-
 
      stdcall   KernelMemManager.MemRes, [amount]
      stdcall   KernelMemManager.RMalloc, [amount]
@@ -150,12 +148,12 @@ proc KernelMemManager.RMalloc uses ebx edi, amount
      
      mov       [ebx + edx + MemBlock.Size], edi
      pop       eax
-     mov       [ebx + edx + MemBlock.Size], eax
+     mov       [ebx + edx + MemBlock.Offset], eax
      inc       [KernelMemManager.UsedCount]
      push      eax
      stdcall   KernelMemManager.Checkbounds
      pop       eax
-     STOP_POINT
+
 .EndProc:
      ret
 endp
@@ -182,8 +180,10 @@ proc KernelMemManager.RFree uses ebx edi esi, what
      
      mov       eax, [what]
      mov       ebx, [KernelMemManager.UsedList]
-     xor       edx, edx
-.StartSearch:
+     
+     mov       edx, 0 - MemBlock.StrucSize
+.StartSearch:  
+     add       edx, MemBlock.StrucSize
      cmp       edx, ecx
      jge       .EndProc
      
@@ -247,23 +247,24 @@ proc KernelMemManager.RFree uses ebx edi esi, what
 
 .EndSeek:
 
+     push      ecx
      mov       eax, MemBlock.StrucSize
      xchg      eax, ecx
      xor       edx, edx
      div       ecx
-     mov       [KernelMemManager.FreeCount]
+     mov       [KernelMemManager.FreeCount], eax
      
 
+     pop       ecx
+ 
 
-.EndProc: 
-
-     mov       [edx + edx + MemBlock.Size], esi
-     mov       [edx + edx + MemBlock.Offset], edi
+     mov       [ebx + ecx + MemBlock.Size], esi
+     mov       [ebx + ecx + MemBlock.Offset], edi
 
      inc       [KernelMemManager.FreeCount]
 
      stdcall   KernelMemManager.Checkbounds
-    
+.EndProc:    
      ret     
 endp
 
@@ -281,6 +282,7 @@ proc KernelMemManager.MemRes uses edi, sizeInc
      shr       ecx, 12
      inc       ecx
      sub       ecx, edi
+     jz        .EndLoop
 @@:
      push      ecx
      stdcall   FramePool.GetFreePage
@@ -288,6 +290,8 @@ proc KernelMemManager.MemRes uses edi, sizeInc
      pop       ecx
      inc       edi
      loop      @B
+
+.EndLoop:
      
      mov       ecx, [KernelMemManager.UsedList]
      mov       edx, [KernelMemManager.UsedCount]

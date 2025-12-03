@@ -21,7 +21,6 @@ PT.Old equ 0xFFFFF000
 PT.New equ 0xFF300000
      stdcall FramePool.GetFreePage
      xchg      ebx, eax 
-     STOP_POINT
      stdcall Mutex.Wait, Process.ProcessMutex
      stdcall Pager.MapPage, PT.New shr 12, ebx, AL_FL_WRITABLE
 

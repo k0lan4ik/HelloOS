@@ -54,8 +54,12 @@ IDE.Write $
 proc Threads.Create  uses ebx esi, process:WORD, pentry
      stdcall   Mutex.Wait, Threads.Mutex
      mov       ebx, [Threads.Threads]
-     sub       ebx, ThreadSize
-     mov       esi, - 1
+     
+;     sub       ebx, ThreadSize
+     
+     xor       esi, esi
+ ;    dec       esi
+
 @@:
      
      add       ebx, ThreadSize
@@ -72,27 +76,29 @@ proc Threads.Create  uses ebx esi, process:WORD, pentry
      or        byte[ebx + Thread.Type], 00110000b
 @@:     
 
-
+     
      movzx     edx, byte[ebx + Thread.Type]
+     shr       edx, 4
+     and       dl, 00000111b
      mov       ecx, Sched.P
-     cmp       word[ecx + edx * 4], 0
+     cmp       word[ecx + edx * 2], 0
      jne       @F
      
      mov       word[ebx + Thread.Next], 0
-     mov       ecx, Sched.P
-     mov       [ecx + edx * 4], cx
+     ;mov       ecx, Sched.P
+     mov       [ecx + edx * 2], si
 
      mov       ecx, Sched.End
-     mov       [ecx + edx * 4], cx
+     mov       [ecx + edx * 2], si
      
      jmp       .EndIfSh
 @@:
-     mov       ecx, Sched.P
-     movzx     eax, word[ecx + edx * 4]
+     ;mov       ecx, Sched.P
+     movzx     eax, word[ecx + edx * 2]
      mov       word[ebx + Thread.Next], ax
      add       eax, [Threads.Threads]
-     mov       [eax + Thread.Previous], cx
-     mov       [eax + edx * 4], cx
+     mov       [eax + Thread.Previous], si
+     mov       [ecx + edx * 2], si
 .EndIfSh:
     
      stdcall   Mutex.Release, Threads.Mutex
@@ -123,10 +129,10 @@ proc Threads.Create  uses ebx esi, process:WORD, pentry
      mov       [ebx + Thread.KernelStack], 0
 
      mov       dword[eax], 0
-     mov       dword[eax + 4], 0x30
+     mov       dword[eax + 4], CPL0_PROCDATA
      mov       edx, [pentry]
      mov       [eax + 8], edx
-     mov       dword[eax + 12], 0x8
+     mov       dword[eax + 12], KERNEL_CODE_SELECTOR
      mov       dword[eax + 16], 0x40200
 
      jmp       .EndIfPR
@@ -138,14 +144,14 @@ proc Threads.Create  uses ebx esi, process:WORD, pentry
      mov       [ebx + Thread.KernelStack], eax
 
      mov       dword[eax], 0
-     mov       dword[eax + 4], 0x30
+     mov       dword[eax + 4], CPL0_PROCDATA
      mov       edx, [pentry]
      mov       dword[eax + 8], edx
-     mov       dword[eax + 12], 0x20
+     mov       dword[eax + 12], USER_CODE_SELECTOR
      mov       dword[eax + 16], 0x40200
      mov       edx, [ebx + Thread.Stack]
      mov       dword[eax + 20], edx
-     mov       dword[eax + 24], 0x28
+     mov       dword[eax + 24], USER_DATA_SELECTOR
 
 .EndIfPR:
      

@@ -7,7 +7,14 @@ block(.consts){
 }
 
 block(.text) {
+proc Timer.TimerInit
+     mov       [Timer.Timers], 0      
+     ret
+endp
+
+
 proc Timer.Handle uses esi edi
+     STOP_POINT
      cmp       [Timer.Timers], 0
      jz        .ProcData
      mov       edi, [Timer.Timers]

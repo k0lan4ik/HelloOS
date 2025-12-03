@@ -55,36 +55,213 @@ block (.text) {
 use16
 org Options.Kernel.Base
 RealEntry:
-        mov     si, dx
-        shl     esi, 16
-        mov     si, ax 
+     mov     si, dx
+     shl     esi, 16
+     mov     si, ax 
 
-        xor     ax, ax
-        mov     ss, ax
-        mov     sp, Options.Kernel.Base
+     xor     ax, ax
+     mov     ss, ax
+     mov     sp, Options.Kernel.Base
 
-        cli
-        in      al, 92h
-        or      al, 2
-        out     92h, al
-        sti
-        
-        mov     ah, 00h
-        mov     al, 03h
-        int     10h
+     cli
+     
+     call      EnableA20WithMessage     
 
-        mov     ah, 05h               
-        mov     al, 0                 
-        int     10h
 
-        mov bx,0                 
-        mov dl,0                
-        mov dh,25              
-        mov ah,02h               
-        int 10h
-        cli
-        call CreateGDT_IDT
-        jmp GotoProtected 
+     sti
+     
+     mov     ah, 00h
+     mov     al, 03h
+     int     10h
+
+     mov     ah, 05h               
+     mov     al, 0                 
+     int     10h
+
+     mov bx,0                 
+     mov dl,0                
+     mov dh,25              
+     mov ah,02h               
+     int 10h
+     cli
+     call CreateGDT_IDT
+jmp GotoProtected 
+
+
+;===============================================================
+; Процедура включения A20 линии
+; Возвращает: CF=0 - успех, CF=1 - ошибка
+;===============================================================
+proc EnableA20
+    call .TestA20
+    jnc .Success
+    
+    mov ax, 0x2401
+    int 0x15
+    call .TestA20
+    jnc .Success
+    
+    call .KbcMethod
+    call .TestA20
+    jnc .Success
+    
+    call .FastMethod
+    call .TestA20
+    jnc .Success
+    
+    stc
+    ret
+    
+.Success:
+    clc
+    ret
+
+;---------------------------------------------------------------
+; Метод через клавиатурный контроллер
+;---------------------------------------------------------------
+.KbcMethod:
+    call .WaitKbcEmpty
+    
+    mov al, 0xD1
+    out 0x64, al
+    call .WaitKbcEmpty
+    
+
+    mov al, 0xDF   
+    out 0x60, al
+    call .WaitKbcEmpty
+    
+    mov ecx, 10000
+.WaitLoop:
+    nop
+    loop .WaitLoop
+    
+    ret
+
+;---------------------------------------------------------------
+; Быстрый метод через порт 0x92
+;---------------------------------------------------------------
+.FastMethod:
+    in al, 0x92
+    or al, 2        
+    and al, 0xFE    
+    out 0x92, al
+    ret
+
+;---------------------------------------------------------------
+; Ожидание освобождения контроллера клавиатуры
+;---------------------------------------------------------------
+.WaitKbcEmpty:
+    push ecx
+    mov ecx, 100000  
+    
+.WaitLoop1:
+    in al, 0x64
+    test al, 2
+    jz .Ready
+    loop .WaitLoop1
+    
+.Ready:
+    pop ecx
+    ret
+
+;---------------------------------------------------------------
+; Проверка работы A20 линии
+; Возвращает: CF=0 - работает, CF=1 - не работает
+;---------------------------------------------------------------
+.TestA20:
+    pushad
+    push es
+    push fs
+    
+    
+    xor ax, ax
+    mov es, ax          
+    dec ax
+    mov fs, ax          
+
+    mov eax, [es:0x600]
+    mov ebx, [fs:0x610]
+    push eax
+    push ebx
+    
+    mov ecx, 100  
+
+.TestLoop:
+    mov eax, ecx
+    not eax
+    
+    mov [es:0x600], eax
+    
+    mov ebx, [fs:0x610]
+    
+    wbinvd
+    
+    cmp eax, ebx
+    je .NotWorking 
+
+    not eax
+    mov [es:0x600], eax
+    wbinvd
+    mov ebx, [fs:0x610]
+    cmp eax, ebx
+    jne .Working
+
+    loop .TestLoop
+    
+    
+.NotWorking:
+    pop ebx
+    pop eax
+    
+    mov [fs:0x610], ebx
+    mov [es:0x600], eax
+    stc
+    jmp .Exit
+    
+.Working:
+    pop ebx
+    pop eax
+    
+    mov [fs:0x610], ebx
+    mov [es:0x600], eax
+    clc
+
+.Exit:
+    pop fs
+    pop es
+    popad
+    ret
+
+endp
+
+;===============================================================
+; Процедура с сообщением об ошибке
+;===============================================================
+proc EnableA20WithMessage
+    call EnableA20
+    jnc .Success
+    
+    mov si, .A20ErrorMsg
+.ErrorLoop:
+    lodsb
+    test al, al
+    jz .Halt
+    mov ah, 0x0E
+    int 0x10
+    jmp .ErrorLoop
+    
+.Halt:
+    cli
+    hlt
+    jmp .Halt
+    
+.Success:
+    ret
+
+.A20ErrorMsg db "Fatal: Cannot enable A20 line", 13, 10, 0
+
+endp
 
 
 proc CreateGDT_IDT
@@ -252,7 +429,7 @@ GotoProtected:
      
      
      mov       eax, cr0
-     or        al,  1
+     or        al,  00000011b
      mov       cr0, eax
      jmp       0x0008:ProtectedEntry
 
@@ -357,7 +534,7 @@ org Options.Kernel.HierHalf + $
      
      call      Interrupt.FaultsInit
      call      IRQ.Init
-     sti
+     
 
 
      call      TSS.Init
@@ -398,18 +575,22 @@ org Options.Kernel.HierHalf + $
      
      stdcall   IntHeand.Init
      stdcall   XInt.Init
-     stdcall   HardwInt.Init       ;
-     stdcall   KernPageFault.Init  ;
+     stdcall   HardwInt.Init       
+     stdcall   KernPageFault.Init  
 
-     stdcall   KernelMemManager.Init  ; 
+     stdcall   KernelMemManager.Init   
          
 
-     stdcall   ProcessManager.Init      ;
-     stdcall   Sched.Init               ;
+     stdcall   ProcessManager.Init     
+     stdcall   Sched.Init               
      
      stdcall   FramePool.Init2
 
+     STOP_POINT
+     
+     stdcall   Timer.TimerInit
      ;timerzzz
+     sti
 
      mov       ebx, 100000 ; 100 KHz
      call      Timer.Init
@@ -568,7 +749,7 @@ proc IRQ.Init
      PIC2_COMMAND     equ PIC2
      PIC2_DATA        equ (PIC2+1)
 
-     PIC_EOI          equ 0x20   ; End-of-interrupt command code */
+     ;PIC_EOI          equ 0x20   ; End-of-interrupt command code */
 
      ICW1_ICW4        equ 0x01   ; ICW4 (not) needed */
      ICW1_SINGLE      equ 0x02   ; Single (cascade) mode */
@@ -618,16 +799,17 @@ proc IRQ.Init
         db      PIC2_DATA,    0x28
         db      PIC1_DATA,    0x04
         db      PIC2_DATA,    0x02
-        db      PIC1_DATA,    ICW4_8086
-        db      PIC2_DATA,    ICW4_8086
-        db      PIC1_DATA,    0xFF xor (IRQ_KEYB or IRQ_CASCADE or IRQ_TIMER)
-        db      PIC2_DATA,    0xFF xor (IRQ_PS2)
+        db      PIC1_DATA,    ICW4_8086 + ICW4_AUTO
+        db      PIC2_DATA,    ICW4_8086 + ICW4_AUTO
+        db      PIC1_DATA,    0;0xFF xor (IRQ_KEYB or IRQ_CASCADE or IRQ_TIMER)
+        db      PIC2_DATA,    0;0xFF xor (IRQ_PS2)
 
 endp
   
 }
 
 block(.initData){
+IDE.Write $
 Kernel.MaxMem dd Kernel.EndMem 
 Str.Goida db "Hello OS x32", 13, 10, ">", 0
 }
