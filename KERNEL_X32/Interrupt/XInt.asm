@@ -206,7 +206,7 @@ XInt.Normal:
      pushf
      pusha
      pushw      ds es fs gs ss ax
-     STOP_POINT
+     ;STOP_POINT
      mov       ebp, esp
      mov       eax, [ebp + 48]
      mov       ebx, [XInt.ExceptHandler]
