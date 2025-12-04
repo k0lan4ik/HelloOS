@@ -6,8 +6,10 @@ proc KernPageFault.Init
      ret
 endp
 
+IDE.Write $
 proc KernPageFault.DataFault, error, eeip, virt
      STOP_POINT
+     xchg eax, eax
      ret
 endp
 
@@ -19,6 +21,7 @@ proc KernPageFault.StaticDataFault, error, eeip, virt
      stdcall   Pager.MapPage, edx, eax, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      ret
 endp
+
 
 proc KernPageFault.CodeFault, error, eeip, virt
      STOP_POINT

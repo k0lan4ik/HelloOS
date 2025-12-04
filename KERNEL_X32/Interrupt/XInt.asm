@@ -66,11 +66,14 @@ proc XInt.Register, exception, handler
      ret
 endp
 
+
 proc XInt.Empty, error, eip
+     STOP_POINT
      ret
 endp
 
 proc XInt.DoDebug, error, eip
+     STOP_POINT
      ret
 endp
 
@@ -117,6 +120,7 @@ proc XInt.DoDivideError, error, eip
      ret
 endp
 
+
 proc XInt.DoStackError, error, eip
      STOP_POINT
      ret
@@ -133,6 +137,7 @@ proc XInt.DoAlignmentCheck, error, eip
 endp
 
 proc XInt.CpuCrash
+     STOP_POINT
      ret
 endp
 
@@ -142,56 +147,66 @@ endp
 
 XInt.Ex0:
      push      0
+     STOP_POINT
      push      0
      jmp       XInt.Normal
 
 XInt.Ex3:
      push      0
+     STOP_POINT
      push      3
      jmp       XInt.Normal
 
 XInt.Ex4:
      push      0
+     STOP_POINT
      push      4
      jmp       XInt.Normal
 
 XInt.Ex5:
      push      0
+     STOP_POINT
      push      5
      jmp       XInt.Normal
 
 XInt.Ex6:
      push      0
+     STOP_POINT
      push      6
      jmp       XInt.Normal
 
 XInt.Ex7:
      push      0
+     STOP_POINT
      push      7
      jmp       XInt.Normal
 
 XInt.Ex13:
+STOP_POINT
      push      13
      jmp       XInt.Normal
 
 XInt.Ex14:
+STOP_POINT
      push      14
      jmp       XInt.Normal
 
 XInt.Ex17:
+STOP_POINT
      push      17
      jmp       XInt.Normal
 
 XInt.Ex19:
      push      0
+     STOP_POINT
      push      19
      jmp       XInt.Normal
 
 XInt.Normal:
      pushf
      pusha
-     push      ds es fs gs ss ax
-
+     pushw      ds es fs gs ss ax
+     STOP_POINT
      mov       ebp, esp
      mov       eax, [ebp + 48]
      mov       ebx, [XInt.ExceptHandler]
@@ -202,7 +217,7 @@ XInt.Normal:
      push      eax
      call      ebx
 
-     pop       ax ss gs fs es ds
+     popw       ax ss gs fs es ds
      popa
      popf
      add       esp, 8
@@ -240,7 +255,6 @@ XInt.AbortToOS:
      jmp       XInt.CpuCrash
 
 XInt.HandleNormal:
- 
     mov        ebx, [XInt.ExceptHandler]
     mov        ebx, [ebx + eax * 4]
     jmp        ebx

@@ -14,7 +14,7 @@ endp
 
 
 proc Timer.Handle uses esi edi
-     STOP_POINT
+     ;STOP_POINT
      cmp       [Timer.Timers], 0
      jz        .ProcData
      mov       edi, [Timer.Timers]

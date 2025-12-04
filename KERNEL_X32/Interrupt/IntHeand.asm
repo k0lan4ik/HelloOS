@@ -7,6 +7,7 @@ proc IntHeand.Init
      ret
 endp
 
+
 proc IntHeand.Void 
      STOP_POINT
      iret

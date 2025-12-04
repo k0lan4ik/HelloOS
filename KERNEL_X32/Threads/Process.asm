@@ -38,7 +38,7 @@ PT.New equ 0xFF300000
      shl       eax, 12
      and       dword[PT.New + 0x3FF * 4], 0x00000FFF
      or        [PT.New + 0x3FF * 4], eax
-     or        byte [PT.New + 0x3FF * 4], 0000_0011
+     or        byte [PT.New + 0x3FF * 4], 0000_0011b
      
      stdcall Pager.Unmap, PT.New shr 12
 

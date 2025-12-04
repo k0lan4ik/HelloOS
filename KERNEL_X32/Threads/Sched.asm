@@ -17,9 +17,10 @@ block(.consts){
 block(.text){
 
 proc Sched.HandlerInt
+     ;STOP_POINT
      push      gs
      push      eax
-     
+
      mov       ax, 0x38
      mov       gs, ax
 
@@ -53,7 +54,8 @@ proc Sched.HandlerInt
      stdcall   Mutex.Wait, Threads.Mutex
 
      stdcall   GS.Base
-     mov       edx, eax
+     xchg      edx, eax
+     movzx     eax, [edx + GS.CThread]
 
      imul      ebx, eax, ThreadSize
      add       ebx, [Threads.Threads]
@@ -68,15 +70,15 @@ proc Sched.HandlerInt
      mov       byte [ebx + Thread.Quantum], al
 
      movzx     ecx, word[ebx + Thread.Type]
-     and        cl, 01110000b
-     shr       cx, 12
+     and       ch, 01110000b
+     shr       cx, 11
 
      mov       edi, Sched.End
      movzx     edi, word[edi + ecx]
      test      edi, edi 
      jz        .ElseIfEnd
 
-     mov       esi, edi
+     imul      esi, edi, ThreadSize
      add       esi, [Threads.Threads]  
      mov       ax, [edx + GS.CThread] 
      mov       [esi + Thread.Next], ax
@@ -101,9 +103,11 @@ proc Sched.HandlerInt
 .EndIfKill:
 
      mov       ecx, 4
-.LoopIfZero:  
      mov       edi, Sched.P
+.LoopIfZero:  
+     
      movzx     ebx, word[edi + ecx * 2 - 2]
+     imul      ebx, ebx, ThreadSize
      add       ebx, [Threads.Threads]
      cmp       [ebx + Thread.Quantum], 0
      jne       .NotZero
@@ -112,50 +116,62 @@ proc Sched.HandlerInt
 .NotZero:
 
      mov       ecx, 4
-
-.LoopFountThread:
      mov       edi, Sched.P
+.LoopFountThread:
      movzx     ebx, word[edi + ecx * 2 - 2]
+     push      ebx
      test      ebx, ebx
      je        .SkipFound
+     imul      ebx, ebx, ThreadSize
+
      add       ebx, [Threads.Threads]
      cmp       [ebx + Thread.Quantum], 0
      jbe       .SkipFound
 
-     mov       ax, [ebx + Thread.Next]
-     mov       edi, Sched.P
+     movzx     eax, [ebx + Thread.Next]
+     
      mov       [edi + ecx * 2 - 2], ax
+     imul      eax, eax, ThreadSize
+     add       eax, [Threads.Threads]
      mov       word [eax + Thread.Previous], 0
      mov       word [ebx + Thread.Next], 0
      mov       byte [ebx + Thread.State], THREAD_RUNNING
 
      mov       al, [ebx + Thread.Quantum]
      mov       [edx + GS.Quantum], al
-     sub       ebx, [Threads.Threads]
      jmp       .EndFountThread
 .SkipFound:
+     push      ebx
      loop      .LoopFountThread
      movzx     ebx, [Sched.Idle]
+     push      ebx
 .EndFountThread:
+     pop       ebx
 
+     push      edx
      stdcall   Mutex.Release, Threads.Mutex
+     pop       edx
 
      mov       [edx + GS.CThread], bx
-     mov       edi, ebx
+     imul      edi, ebx, ThreadSize
      add       edi, [Threads.Threads]
      movzx      eax, word[edi + Thread.Pid] 
      mov       [edx + GS.CProcess], ax
 
+     push      eax
      stdcall   Sched.LoadThread, edi
+     pop       eax
 
-     mov       edx, cr3
-     add       eax, [Process.Process]
-     cmp       [eax + Process.CR3], 0
+   
+     movzx     ecx, [edi + Thread.Pid]
+     imul      ecx, ecx, ProcessSize
+     add       ecx, [Process.Process] 
+     cmp       [ecx + Process.CR3], 0
      jz       .NotNewProcc
-     cmp       [eax + Process.CR3], edx
+     cmp       [ecx + Process.CR3], edx
      je       .NotNewProcc
 
-     stdcall   Sched.SwitchTo, [eax + Process.CR3]
+     stdcall   Sched.SwitchTo, [ecx + Process.CR3]
 
 .NotNewProcc:
 
@@ -188,23 +204,30 @@ proc Sched.HandlerInt
 endp
 
 proc Sched.Refill uses ecx edx
+     STOP_POINT
      movzx     ecx, [Sched.Maxthr]
-.AddToQueue:
-     imul      edx, ecx, ThreadSize  
-     add       edx, [Threads.Threads]
-     movzx     eax, [edx + Thread.State]
-     cmp       eax, THREAD_DEAD
+     imul      ecx, ecx, ThreadSize 
+     mov       edx, [Threads.Threads]
+     add       ecx, edx
+.AddToQueue:   
+     cmp       edx, ecx
+     jnb        .EndProc
+     mov       al, [edx + Thread.State]
+     cmp       al, THREAD_DEAD
      je        .SkipThread
-     cmp       eax, THREAD_NEW
+     cmp       al, THREAD_NEW
      je        .SkipThread
-     cmp       eax, THREAD_NONE
+     cmp       al, THREAD_NONE
      je        .SkipThread
      
-     shr       [edx + Thread.State], 1
+     shr       [edx + Thread.Quantum], 1
      mov       al, [edx + Thread.Priority]
-     add       [edx + Thread.State], al
+     add       [edx + Thread.Quantum], al
 .SkipThread:
-     loop      .AddToQueue
+     add       edx, ThreadSize
+     jmp       .AddToQueue
+.EndProc:
+
      ret
 endp
 
@@ -218,18 +241,6 @@ proc Sched.SwitchTo creg
      mov  eax, [creg] 
      mov  cr3, eax
      ret
-endp
-
-
-proc Sched.LoadThread uses edx, thread 
-     mov       edx, [thread]
-     mov       [GDT + 0x38 + 2], dl
-     mov       [GDT + 0x38 + 3], dh
-     shr       edx, 16
-     mov       [GDT + 0x38 + 4], dl
-     mov       [GDT + 0x38 + 7], dh 
-      
-     ret 
 endp
 
 proc Sched.Check
@@ -384,6 +395,16 @@ proc Sched.Yield uses ebx edi, thread
      int       30h
      ret
 endp 
+
+proc Sched.LoadThread, thread  
+     mov  eax, [thread]
+     mov  [GDT + CPL0_THREAD + 2], al
+     mov  [GDT + CPL0_THREAD + 3], ah
+     shr  eax, 16
+     mov  [GDT + CPL0_THREAD + 4], al
+     mov  [GDT + CPL0_THREAD + 7], ah
+     ret
+endp
 
 }
 

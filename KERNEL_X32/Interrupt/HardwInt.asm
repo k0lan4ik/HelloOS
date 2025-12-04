@@ -170,10 +170,13 @@ HardwInt.GenHandler:
      push      ds es fs gs ss ax
 
      mov       ebp, esp
-     mov       eax, [ebp + 48]
 
+
+     
      stdcall   Mutex.Wait, HardwInt.Handler.Mutex
      
+     mov       eax, [ebp + 48]
+
      mov       edx, HardwInt.Hand
      cmp       [eax + edx + HardwInt.Hand.Mutex], 1
      jnz       @F
@@ -194,7 +197,7 @@ HardwInt.GenHandler:
 
      push      eax
      stdcall   Mutex.Release, HardwInt.Handler.Mutex
-     push      eax
+     pop       eax
      
      test      eax, eax
      jnz       @F

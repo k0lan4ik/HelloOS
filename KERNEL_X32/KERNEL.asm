@@ -276,7 +276,7 @@ proc CreateGDT_IDT
 
      mov       cx, 256
 @@:
-     mov       eax, Interrupt.Void
+     mov       eax, XInt.CpuCrash
      stosw
 
      mov       ax, 0x8
@@ -328,7 +328,7 @@ proc CreateGDT_IDT
      call      CreateDescriptor
 
      mov       eax, $0000FFFF
-     mov       ebx, $00050000
+     mov       ebx, $FE000000
      mov       cx,  1_1_0_0_0000_1_00_1_0011b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
      call      CreateDescriptor
 
@@ -429,6 +429,7 @@ GotoProtected:
      
      
      mov       eax, cr0
+     and       al,  11111011b
      or        al,  00000011b
      mov       cr0, eax
      jmp       0x0008:ProtectedEntry
@@ -532,7 +533,7 @@ org Options.Kernel.HierHalf + $
 
      mov dword [0xfffff000], 0x00000002
      
-     call      Interrupt.FaultsInit
+
      call      IRQ.Init
      
 
@@ -592,121 +593,8 @@ org Options.Kernel.HierHalf + $
      ;timerzzz
      sti
 
-     mov       ebx, 100000 ; 100 KHz
-     call      Timer.Init
-     ;call      PS2.Init
-
-     call      ScreenMode03.Clear
-     
-     xor       edx, edx
-     mov       ecx, 4
-     call      ScreenMode03.SetCursor
-     
-     mov       esi, Str.Goida
-     call      ScreenMode03.PrintString
-.WriteLoop:
-
-
-     push      [ScreenMode03.CursorX]
-     push      [ScreenMode03.CursorY]
-
-     xor       edx, edx
-     xor       ecx, ecx
-     call      ScreenMode03.SetCursor
-
-     mov       ebx, [PS2.Mouse.X]
-     call      HexPrint
-
-     xor       edx, edx
-     mov       ecx, 1
-     call      ScreenMode03.SetCursor
-
-     mov       ebx, [PS2.Mouse.Y]
-     call      HexPrint
-
-     xor       edx, edx
-     mov       ecx, 2
-     call      ScreenMode03.SetCursor
-     mov       ecx, [es:Options.Kernel.HierHalf + Options.Kernel.Base]
-     test      ecx, ecx
-     jz        .Zoc
-.PrintMem:
-     mov       eax, ecx
-     push      ecx
-     dec       eax
-     mov       edx, 24
-     mul       edx
-     xchg      edx, eax
-     mov       ebx, [es:Options.Kernel.HierHalf + Options.Kernel.Base + 4 + edx]
-     call      HexPrint
-
-     mov       al, ' '
-     call      ScreenMode03.PrintSymbol 
-
-     add       edx, 8
-     mov       ebx, [es:Options.Kernel.HierHalf + Options.Kernel.Base + 4 + edx]
-     call      HexPrint
-     
-     mov       al, ' '
-     call      ScreenMode03.PrintSymbol 
-
-     pop       ecx
-     loop      .PrintMem
-      
-.Zoc:
-
-
-     xor       edx, edx
-     mov       ecx, 3
-     call      ScreenMode03.SetCursor
-
-     mov       ebx, [Timer.TimerMs]
-     call      HexPrint
-     
-
-     pop       [ScreenMode03.CursorY]
-     pop       [ScreenMode03.CursorX]
-
-     mov       esi, [PS2.Mouse.X]
-     mov       edi, [PS2.Mouse.Y]
-
-     sub       esi, [Mouse.X]
-     add       [Mouse.X], esi
-     sar       esi, 1
-     sbb       [Mouse.X], 0
-
-
-     
-     sub       edi, [Mouse.Y]
-     add       [Mouse.Y], edi
-     sar       edi, 1
-     sbb       [Mouse.Y], 0
-
-     call      ScreenMode03.DrawMouseCursor
-     
-     mov       eax, [PS2.KeyBufferTail]
-     
-     mov       edx, [PS2.KeyBufferHead]
-     cmp       eax, edx
-     je        .WriteLoop
-     ;IDE.Write $%
-     mov       dl,  [PS2.KeyBuffer + eax]
-     inc       eax
-     and       eax, 63
-     mov       [PS2.KeyBufferTail], eax
-     
-     test      dl, dl
-     jne       @F
-     inc       eax
-     and       eax, 63
-      
-     mov       [PS2.KeyBufferTail], eax
-     jmp       .WriteLoop
-@@:
-     xchg      al, dl
-     
-     call      ScreenMode03.PrintSymbol    
-     jmp       .WriteLoop
+     int       30h
+     jmp       $
 
 
 proc HexPrint
@@ -814,14 +702,8 @@ Kernel.MaxMem dd Kernel.EndMem
 Str.Goida db "Hello OS x32", 13, 10, ">", 0
 }
 block(.data){
-Mouse.X dd ?
-Mouse.Y dd ?
-Discriptor.Index dd ?
 }
-include 'Interrupt.asm'
-include 'Timer.asm'
-include 'ScreenMode03.asm'
-include 'PS2.asm'
+
 
 include 'Memory/Pager.asm'
 include 'Memory/FramePool.asm'

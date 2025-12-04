@@ -155,7 +155,13 @@ proc Threads.Create  uses ebx esi, process:WORD, pentry
 
 .EndIfPR:
      
+     cmp       [Sched.Maxthr], si
+     jae       @F
+     mov       [Sched.Maxthr], si
+ @@:    
+       
      mov       [ebx + Thread.State], THREAD_AVAILABLE
+     
      xchg      eax, esi
      ret
 endp
