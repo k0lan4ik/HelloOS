@@ -23,7 +23,6 @@ PT.New equ 0xFF300000
      xchg      ebx, eax 
      stdcall Mutex.Wait, Process.ProcessMutex
      stdcall Pager.MapPage, PT.New shr 12, ebx, AL_FL_WRITABLE
-
      mov       edi, PT.New + 0x3C0 * 4
      mov       esi, PT.Old + 0x3C0 * 4
 
@@ -33,7 +32,7 @@ PT.New equ 0xFF300000
      cld
      rep movsd
      popf
-
+     
      mov       eax, ebx
      shl       eax, 12
      and       dword[PT.New + 0x3FF * 4], 0x00000FFF

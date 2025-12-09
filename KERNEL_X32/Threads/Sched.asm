@@ -69,9 +69,10 @@ proc Sched.HandlerInt
      mov       al, [edx + GS.Quantum]
      mov       byte [ebx + Thread.Quantum], al
 
-     movzx     ecx, word[ebx + Thread.Type]
-     and       ch, 01110000b
-     shr       cx, 11
+     movzx     ecx, byte[ebx + Thread.Type]
+     
+     and       ch, 0111_0000b
+     shr       cx, 3
 
      mov       edi, Sched.End
      movzx     edi, word[edi + ecx]
@@ -126,7 +127,7 @@ proc Sched.HandlerInt
 
      add       ebx, [Threads.Threads]
      cmp       [ebx + Thread.Quantum], 0
-     jbe       .SkipFound
+     jna       .SkipFound
 
      movzx     eax, [ebx + Thread.Next]
      
@@ -141,7 +142,7 @@ proc Sched.HandlerInt
      mov       [edx + GS.Quantum], al
      jmp       .EndFountThread
 .SkipFound:
-     push      ebx
+     pop       ebx
      loop      .LoopFountThread
      movzx     ebx, [Sched.Idle]
      push      ebx
@@ -162,7 +163,6 @@ proc Sched.HandlerInt
      stdcall   Sched.LoadThread, edi
      pop       eax
 
-   
      movzx     ecx, [edi + Thread.Pid]
      imul      ecx, ecx, ProcessSize
      add       ecx, [Process.Process] 
@@ -170,7 +170,6 @@ proc Sched.HandlerInt
      jz       .NotNewProcc
      cmp       [ecx + Process.CR3], edx
      je       .NotNewProcc
-
      stdcall   Sched.SwitchTo, [ecx + Process.CR3]
 
 .NotNewProcc:
@@ -204,8 +203,8 @@ proc Sched.HandlerInt
 endp
 
 proc Sched.Refill uses ecx edx
-     STOP_POINT
      movzx     ecx, [Sched.Maxthr]
+     inc       ecx
      imul      ecx, ecx, ThreadSize 
      mov       edx, [Threads.Threads]
      add       ecx, edx
@@ -273,9 +272,10 @@ proc Sched.Signal uses edi, thread:WORD
      jne       @F
 
      mov       [Thread.State + eax], THREAD_AVAILABLE
-     mov       edx, [eax + Thread.Type] 
-     and       edx, 01110000_00000000b
-     shr       edx, 12  
+     movzx     edx, byte[eax + Thread.Type] 
+     shr       edx, 4  
+     and       edx, 0000_0111b
+     
      mov       edi, Sched.P 
      movzx     ecx, word [edi + edx * 2]
      mov       [Thread.Next + eax], cx
@@ -314,13 +314,12 @@ proc Sched.Block uses ebx
      mov       byte [eax + Thread.State], THREAD_BLOCKED
 
      stdcall   Mutex.Release, Threads.Mutex
-     
      int       30h
 
      jmp       .EndProc
  .Else: 
 
-     or         word [eax + Thread.SignalWaiting], 00001000_00000000b
+     and         word [eax + Thread.SignalWaiting], not 00001000_00000000b
      
      stdcall   Mutex.Release, Threads.Mutex
 
@@ -370,9 +369,10 @@ proc Sched.Yield uses ebx edi, thread
      mov       [edx + Thread.Next], ax
 @@:      
 
-     movzx     eax, word [ebx + Thread.Type]
-     and       ah, 01110000b
-     shr       ax, 12
+     movzx     eax, byte [ebx + Thread.Type]
+     shr       ax, 4
+     and       ah, 0000_0111b
+     
      mov       edi, Sched.P
      movzx     edx, word [edi + eax * 2]
      mov       ecx, [thread]
@@ -414,6 +414,7 @@ block(.initData){
 }
 
 block(.data){
+     
      Sched.Maxthr   dw ?
      Sched.P        dw 4 dup ?
      Sched.End      dw 4 dup ?

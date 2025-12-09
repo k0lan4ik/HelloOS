@@ -167,7 +167,7 @@ HardwInt.15:
 HardwInt.GenHandler:
      pushf
      pusha
-     push      ds es fs gs ss ax
+     pushw      ds es fs gs ss ax
 
      mov       ebp, esp
 
@@ -178,6 +178,7 @@ HardwInt.GenHandler:
      mov       eax, [ebp + 48]
 
      mov       edx, HardwInt.Hand
+     IDE.Write $
      cmp       [eax + edx + HardwInt.Hand.Mutex], 1
      jnz       @F
      mov       [eax + edx + HardwInt.Hand.Mutex], 0
@@ -204,7 +205,7 @@ HardwInt.GenHandler:
      stdcall   Timer.Handle
 @@:
 
-     pop       ax ss gs fs es ds
+     popw       ax ss gs fs es ds
      popa
      popf
      add       esp, 4
@@ -216,6 +217,7 @@ HardwInt.GenHandler:
 
 
 block(.data) {
+    IDE.Write $
     HardwInt.Hand       db (HardwInt.Hand.Size * 64) dup ? 
     HardwInt.Handler.Mutex db ?   
 }

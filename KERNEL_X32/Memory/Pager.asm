@@ -27,9 +27,11 @@ block(.text){
 
 proc Pager.Unmap virt
      mov       eax, [virt]
+     and       eax, PAGE_MASK 
      shr       eax, PAGE_SHIFT
-     and       eax, PAGE_MASK shr PAGE_SHIFT
+     
      push      eax
+     shl       eax, 2
      add       eax, PML2BASE 
      ;IDE.Write PML2BASE
      test byte [eax], 1
@@ -38,9 +40,11 @@ proc Pager.Unmap virt
      push      -1
      jmp       .EndProc  
 @@:
+     push      eax
      mov       eax, [virt]
      and       eax, PAGE_MASK
-     
+     shl       eax, 2
+     add       eax, PML1BASE
      test byte [eax], 1
      pop       eax
      jnz       @F
@@ -48,8 +52,11 @@ proc Pager.Unmap virt
      jmp       .EndProc  
 @@:
      push      eax
+     mov       eax, [virt]
+     and       eax, PAGE_MASK
+     shl       eax, 2
      add       eax, PML1BASE
-     and  byte [eax], 0xFD
+     and  byte [eax], 0xFE
      
      mov       edx, [eax]
      pop       eax
@@ -58,6 +65,7 @@ proc Pager.Unmap virt
 
      mov       edx, [virt]
      and       edx, (PAGE_MASK and (not ((1 shl PAGE_SHIFT) - 1)))
+     shl       edx, 2
      mov       ecx, 1024
 @@:
      push      edx
@@ -71,6 +79,7 @@ proc Pager.Unmap virt
      mov       eax, [virt]
      and       eax, PAGE_MASK
      shr       eax, PAGE_SHIFT
+     shl       eax, 2
      add       eax, PML2BASE
      mov       edx, [eax]
      shr       edx, 12
@@ -79,8 +88,11 @@ proc Pager.Unmap virt
      cmp       eax, -1
      je        .EndProc
      stdcall   FramePool.FreePage, eax
-
+    
 .EndProc:
+     mov       eax, [virt]
+     shl       eax, 12
+     invlpg    [eax]
      pop       eax
      ret
 endp
@@ -131,8 +143,11 @@ proc Pager.MapPage uses ebx, todovirt, todophys, flags:DWORD
      shl       ebx, 2
      add       ebx, PML1BASE
      mov       [ebx], eax
-         
+     mov       eax, [todovirt]
+     shl       eax, 12
+     invlpg    [eax]  
 .EndProc:
+     
      ret
 endp
 

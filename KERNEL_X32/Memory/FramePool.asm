@@ -1,6 +1,6 @@
 block(.consts){
-E820.Count equ 0xC0000600
-E820.Entry equ 0xC0000604
+E820.Count equ 0x00000600 or Options.Kernel.HierHalf
+E820.Entry equ 0x00000604 or Options.Kernel.HierHalf
 virtual at E820.Entry
      E820.Entry.Start    dq ?
      E820.Entry.Length   dq ?
@@ -49,7 +49,7 @@ proc FramePool.Init2
      stdcall   Threads.Create, dword[cpr], FramePool.FreePageThread
      mov       [FramePool.FreeThread], ax
      
-     stdcall    Threads.Create, dword [cpr] FramePool.InitialFiller
+     stdcall    Threads.Create, dword [cpr], FramePool.InitialFiller
      ret
 endp
 

@@ -50,7 +50,7 @@ end virtual
 
 block(.text){
 
-IDE.Write $
+
 proc Threads.Create  uses ebx esi, process:WORD, pentry
      stdcall   Mutex.Wait, Threads.Mutex
      mov       ebx, [Threads.Threads]
@@ -165,7 +165,7 @@ proc Threads.Create  uses ebx esi, process:WORD, pentry
      xchg      eax, esi
      ret
 endp
-IDE.Write $
+
 
 proc Threads.Kill thread:WORD
      cmp       word[thread], 0

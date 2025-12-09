@@ -586,15 +586,32 @@ org Options.Kernel.HierHalf + $
      stdcall   Sched.Init               
      
      stdcall   FramePool.Init2
-
-     STOP_POINT
      
-     stdcall   Timer.TimerInit
-     ;timerzzz
-     sti
+     stdcall   Timer.TimerInit, 10000
 
+     mov       word[0xF00B8000], $6565
+     ;stdcall   VGA.Init
+     ;mov       word[0xF00B8000], $6565
+     
+     stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE 
+     stdcall   VGA.PutString, Str.Goida
+     stdcall   Process.Create
+     stdcall   Threads.Create, eax, PrintThread
+     sti
      int       30h
      jmp       $
+
+proc PrintThread
+.InfLoop:
+     STOP_POINT
+     stdcall   VGA.PutString, Str.Goida
+     stdcall   VGA.SetColor, dword[Color2], dword[Color1]
+     inc       [Color1]
+     add       [Color2], 2
+     stdcall   Timer.Sleep, 100 
+     ;int       30h
+     jmp       .InfLoop
+endp
 
 
 proc HexPrint
@@ -697,9 +714,10 @@ endp
 }
 
 block(.initData){
-IDE.Write $
 Kernel.MaxMem dd Kernel.EndMem 
-Str.Goida db "Hello OS x32", 13, 10, ">", 0
+Color1    db VGA_COLOR_BLACK
+Color2    db VGA_COLOR_BLUE
+Str.Goida db "Hello OS x32 <3", 13, 0
 }
 block(.data){
 }
@@ -722,10 +740,11 @@ include 'Interrupt/HardwInt.asm'
 include 'Interrupt/KernPageFault.asm'
 include 'Interrupt/Timer.asm'
 
+include 'Drivers/VGA.asm'
+
 putBlocks .consts
 putBlocks .text
 putBlocks .initData
 putBlocks .data
 putBlocks .structs
 Kernel.EndMem = $
-IDE.Write Kernel.EndMem

@@ -6,7 +6,7 @@ proc KernPageFault.Init
      ret
 endp
 
-IDE.Write $
+
 proc KernPageFault.DataFault, error, eeip, virt
      STOP_POINT
      xchg eax, eax
