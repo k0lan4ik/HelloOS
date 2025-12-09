@@ -45,6 +45,8 @@ USER_DATA_SELECTOR    equ 0x28
 CPL0_PROCDATA         equ 0x30
 CPL0_THREAD           equ 0x38
 
+TIMER_HZ = 10000
+
 Options.Kernel.Base     equ     $0600
 Options.Kernel.HierHalf equ     $F0000000
 }
@@ -587,11 +589,10 @@ org Options.Kernel.HierHalf + $
      
      stdcall   FramePool.Init2
      
-     stdcall   Timer.TimerInit, 10000
+     stdcall   Timer.TimerInit, TIMER_HZ
 
-     mov       word[0xF00B8000], $6565
-     ;stdcall   VGA.Init
-     ;mov       word[0xF00B8000], $6565
+     ;stdcall   Floppy.Init
+     ;stdcall   Floppy.DetectDrives
      
      stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE 
      stdcall   VGA.PutString, Str.Goida
@@ -603,12 +604,15 @@ org Options.Kernel.HierHalf + $
 
 proc PrintThread
 .InfLoop:
-     STOP_POINT
+     ;STOP_POINT
+     stdcall   VGA.PrintDec, [Timer.TimerMs]
      stdcall   VGA.PutString, Str.Goida
-     stdcall   VGA.SetColor, dword[Color2], dword[Color1]
+     ;stdcall   VGA.SetColor, dword[Color2], dword[Color1]
      inc       [Color1]
-     add       [Color2], 2
-     stdcall   Timer.Sleep, 100 
+     and       [Color1], 00000111b
+     inc       [Color2]
+     and       [Color2], 00000111b
+     stdcall   Timer.Sleep, 1000 
      ;int       30h
      jmp       .InfLoop
 endp
@@ -741,6 +745,7 @@ include 'Interrupt/KernPageFault.asm'
 include 'Interrupt/Timer.asm'
 
 include 'Drivers/VGA.asm'
+include 'Drivers/Floppy.asm'
 
 putBlocks .consts
 putBlocks .text

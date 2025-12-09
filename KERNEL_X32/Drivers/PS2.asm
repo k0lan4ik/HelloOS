@@ -23,6 +23,7 @@ KEY_BUFFER_SIZE    equ 64
 block(.text) {
 
 proc  PS2.Init;{ Инициализация PS2
+     pushf
      cli
      mov       al, 0xAD
      call      PS2.SendCommand
@@ -75,9 +76,7 @@ proc  PS2.Init;{ Инициализация PS2
      mov       esi, 0x2C * 8
      mov       eax, PS2.IRQ12Handler
      call      Interrupt.Make
-
-     sti
-
+     popf
      mov al, 0xD4 
      call PS2.QueueCommand
      mov al, 0xF4 

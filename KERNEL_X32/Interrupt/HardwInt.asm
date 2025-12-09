@@ -38,7 +38,7 @@ proc HardwInt.Init uses edi
 endp 
 
 proc HardwInt.WhaitForInt, hwint 
-     stdcall HardwInt.RegInt, hwint
+     stdcall HardwInt.RegInt, [hwint]
      stdcall Sched.Block
      ret
 endp

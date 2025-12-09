@@ -5,6 +5,11 @@ block(.consts){
           Timer.TimerEnt.Next  dd ?
           Timer.TimerEnt.Size:
      end virtual
+
+     PIT_MODE_INTERRUPT_ON_TERMINAL_COUNT = 0
+     PIT_MODE_ONE_SHOT                    = 1
+     PIT_MODE_RATE_GENERATOR              = 2 
+     PIT_MODE_SQUARE_WAVE                 = 3
 }
 
 block(.text) {
@@ -14,9 +19,14 @@ proc Timer.TimerInit uses ebx, Hz
      stdcall Mutex.Start, Timer.Mutex
 
      mov       ebx, [Hz]
+
      mov       eax, 0x10000 
      cmp       ebx, 18
      jbe       .GotReloadValue
+
+     mov       eax,2                        
+     cmp       ebx,1193181             
+     jae       .GotReloadValue
 
      mov       eax, 3579545
      xor       edx, edx
@@ -74,6 +84,7 @@ proc Timer.TimerInit uses ebx, Hz
      out       0x40, al                      
      mov       al, ah                        
      out       0x40, al
+     popfd
      ret
 endp
 
@@ -88,20 +99,25 @@ proc Timer.Handle uses esi edi ebx
     
      cmp       [Timer.Timers], 0
      jz        .ProcData
-
      
      mov       edi, [Timer.Timers]
-
+     xor       edx, edx
 .ProcessTimerList:
-     test edi, edi
-     jz .EndTimerList
      
-     sub [edi + Timer.TimerEnt.Delay], bx
-     jg .NextTimer
-    
-     mov esi, edi
-     mov edi, [edi + Timer.TimerEnt.Next]
-
+     test      edi, edi
+     jz        .EndTimerList
+     sub       [edi + Timer.TimerEnt.Delay], bx
+     jg        .NextTimer
+     
+     mov       esi, edi
+     mov       edi, [edi + Timer.TimerEnt.Next]
+     test      edx, edx
+     jz        @F
+     mov [edx + Timer.TimerEnt.Next], edi
+     jmp       .Del
+@@:
+     mov [Timer.Timers], edi
+.Del:
      movzx eax, word[esi + Timer.TimerEnt.Tread]
      stdcall Sched.Signal, eax
 
@@ -110,6 +126,7 @@ proc Timer.Handle uses esi edi ebx
      jmp .ProcessTimerList
     
 .NextTimer:
+     mov edx, edi
      mov edi, [edi + Timer.TimerEnt.Next]
      jmp .ProcessTimerList
     
@@ -126,9 +143,8 @@ proc Timer.Handle uses esi edi ebx
 endp
 
 proc Timer.RegisterDelay uses esi, thread:WORD, delay:WORD
-     STOP_POINT
      stdcall KernelMemManager.Malloc, Timer.TimerEnt.Size
-     
+     ;STOP_POINT
      mov esi, eax
      mov ax, [thread]
      mov [esi + Timer.TimerEnt.Tread], ax

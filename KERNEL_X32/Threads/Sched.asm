@@ -261,13 +261,13 @@ endp
 
 proc Sched.Signal uses edi, thread:WORD
      stdcall   Mutex.Wait, Threads.Mutex
-        
+       
      movzx     eax, [thread]
      mov       edx,  ThreadSize
      mul       edx
      add       eax, [Threads.Threads] 
 
-
+     
      cmp       [Thread.State + eax], THREAD_BLOCKED
      jne       @F
 
@@ -283,7 +283,7 @@ proc Sched.Signal uses edi, thread:WORD
      add       ecx, [Threads.Threads]
      mov       ax, [thread]     
      mov       [ecx + Thread.Previous], ax
-     mov       [Sched.P + edi * 2], ax
+     mov       [edi + edx * 2], ax
      jmp       .EndIF
 @@:
      cmp       [Thread.State + eax], THREAD_SWAPPEDBLOCKED
@@ -291,8 +291,9 @@ proc Sched.Signal uses edi, thread:WORD
      mov       [Thread.State + eax], THREAD_SWAPPED
      jmp       .EndIF
 @@:
+     
      or       word[Thread.SignalWaiting + eax], 00001000_00000000b
-
+ 
 .EndIF:
      
 

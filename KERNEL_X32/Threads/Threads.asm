@@ -8,6 +8,9 @@ THREAD_SWAPPEDBLOCKED equ 5
 THREAD_DEAD         equ 6
 THREAD_NEW          equ 7
 
+START_PRIORITY = (TIMER_HZ / 500 + 1) and 0111_1111b
+START_QUANTUM = START_PRIORITY
+
 
 virtual at 0
      Thread.EAX               dd ?
@@ -105,8 +108,8 @@ proc Threads.Create  uses ebx esi, process:WORD, pentry
      
      mov       ax, [process]
      mov       word[ebx + Thread.Pid], ax
-     mov       byte[ebx + Thread.Priority], 20
-     mov       byte[ebx + Thread.Quantum], 20
+     mov       byte[ebx + Thread.Priority], START_PRIORITY
+     mov       byte[ebx + Thread.Quantum], START_QUANTUM
 
      mov       byte[ebx + Thread.Unblock], 20
      and       word[ebx + Thread.Killed], 01110111_11111111b
