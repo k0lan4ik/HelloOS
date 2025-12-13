@@ -115,7 +115,7 @@ proc Threads.Create  uses ebx esi, process:WORD, pentry
      and       word[ebx + Thread.Killed], 01110111_11111111b
      mov       word[ebx + Thread.Previous], 0 
      
-     cmp       [pentry], 0xF0000000
+     cmp       [pentry], Options.Kernel.HierHalf
      jb        @F
      
      stdcall   KernelMemManager.Malloc, 8192

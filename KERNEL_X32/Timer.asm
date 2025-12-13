@@ -79,6 +79,12 @@ proc Timer.Init
      ret
 endp
 
+
+proc Timer.GetTime
+     mov       eax, [Timer.TimerMs]
+     ret
+endp
+
 proc Timer.IRQ0Handler
      push      eax ebx
 

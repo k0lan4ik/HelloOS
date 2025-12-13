@@ -543,37 +543,55 @@ org Options.Kernel.HierHalf + $
      call      TSS.Init
      stdcall   FramePool.Init1
 
+     stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE
+     stdcall   VGA.PutString, Str.A 
+     
      ;Инициализация страници под procdata for this processor
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFF000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
+     stdcall   VGA.PutString, Str.A 
+
      ;Инициализация страниц под первые 12 потоков
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFE000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
+     stdcall   VGA.PutString, Str.A 
+
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFE001, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
+     stdcall   VGA.PutString, Str.A 
+
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFF002, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
+     stdcall   VGA.PutString, Str.A 
+
      ;Страница для первых N процессов
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFF102, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
+     stdcall   VGA.PutString, Str.A 
+
      ;тут вместо регистра надо адрес таблицы и IDT и GDT
      stdcall   Pager.MapPage, 0xFF100, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      ;Переназначение таблицы
      
-     
+     stdcall   VGA.PutString, Str.A 
+
      ; E820 memory map
      stdcall   Pager.MapPage, 0xFF101, 0x2, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+
+     stdcall   VGA.PutString, Str.A 
 
      ; page fault handler table
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFF120, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
+     stdcall   VGA.PutString, Str.A 
+
      stdcall   GS.Init
      
      stdcall   IntHeand.Init
@@ -581,20 +599,32 @@ org Options.Kernel.HierHalf + $
      stdcall   HardwInt.Init       
      stdcall   KernPageFault.Init  
 
+     stdcall   VGA.PutString, Str.A 
+     
      stdcall   KernelMemManager.Init   
          
+     stdcall   VGA.PutString, Str.A 
 
      stdcall   ProcessManager.Init     
      stdcall   Sched.Init               
      
+     stdcall   VGA.PutString, Str.A 
+
      stdcall   FramePool.Init2
      
+     stdcall   VGA.PutString, Str.A 
+    
      stdcall   Timer.TimerInit, TIMER_HZ
 
+ 
+     STOP_POINT
+
+     ;stdcall   DMA.Init
+     
      ;stdcall   Floppy.Init
      ;stdcall   Floppy.DetectDrives
      
-     stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE 
+     
      stdcall   VGA.PutString, Str.Goida
      stdcall   Process.Create
      stdcall   Threads.Create, eax, PrintThread
@@ -722,6 +752,7 @@ Kernel.MaxMem dd Kernel.EndMem
 Color1    db VGA_COLOR_BLACK
 Color2    db VGA_COLOR_BLUE
 Str.Goida db "Hello OS x32 <3", 13, 0
+Str.A     db "A",0
 }
 block(.data){
 }
@@ -745,7 +776,8 @@ include 'Interrupt/KernPageFault.asm'
 include 'Interrupt/Timer.asm'
 
 include 'Drivers/VGA.asm'
-include 'Drivers/Floppy.asm'
+include 'Drivers/DMA.asm'
+;include 'Drivers/Floppy.asm'
 
 putBlocks .consts
 putBlocks .text

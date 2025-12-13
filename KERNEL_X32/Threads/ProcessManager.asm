@@ -35,6 +35,7 @@ proc ProcessManager.Init
 
      stdcall   Threads.Create, 0, ProcessManager.Idle
      stdcall   Threads.Create, 0, ProcessManager.Terminator
+     mov       [ProcessManager.TerminatorThread], ax
      ret
 endp
 

@@ -12,7 +12,7 @@ end virtual
 block(.text){
 proc FramePool.Init1 
      mov       ecx, 2047
-     mov       eax, 0x100
+     mov       eax, 0x1000
      mov       edi, FramePool.ZeroTable 
 @@:
      stosd
