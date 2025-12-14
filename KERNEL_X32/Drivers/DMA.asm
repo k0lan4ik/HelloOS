@@ -406,14 +406,14 @@ proc DMA.FindBlockByVirtAddr uses edi, virtAddr: DWORD
     ret
 endp
 
-proc DMA.AddToAllocatedList uses edi, block: DWORD
+proc DMA.AddToAllocatedList uses edi, alBlock: DWORD
     mov     edi, DMA.AllocatedBlocks
     mov     ecx, [DMA.AllocatedCount]
     
     cmp     ecx, DMA_MAX_BUFFERS
     jae     .Full
     
-    mov     eax, [block]
+    mov     eax, [alBlock]
     mov     [edi + ecx * 4], eax
     inc     [DMA.AllocatedCount]
     
@@ -421,7 +421,7 @@ proc DMA.AddToAllocatedList uses edi, block: DWORD
     ret
 endp
 
-proc DMA.RemoveFromAllocatedList uses ebx edi esi, block: DWORD
+proc DMA.RemoveFromAllocatedList uses ebx edi esi, alBlock: DWORD
     mov     esi, DMA.AllocatedBlocks
     mov     ecx, [DMA.AllocatedCount]
     
@@ -430,7 +430,7 @@ proc DMA.RemoveFromAllocatedList uses ebx edi esi, block: DWORD
     jz      .NotFound
     
     mov     eax, [esi + ecx * 4 - 4]
-    cmp     eax, [block]
+    cmp     eax, [alBlock]
     je      .Found
     
     dec     ecx

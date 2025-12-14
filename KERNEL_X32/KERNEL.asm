@@ -619,13 +619,11 @@ org Options.Kernel.HierHalf + $
  
      STOP_POINT
 
-     ;stdcall   DMA.Init
+     stdcall   DMA.Init
      
-     ;stdcall   Floppy.Init
-     ;stdcall   Floppy.DetectDrives
+    
      
      
-     stdcall   VGA.PutString, Str.Goida
      stdcall   Process.Create
      stdcall   Threads.Create, eax, PrintThread
      sti
@@ -634,7 +632,22 @@ org Options.Kernel.HierHalf + $
 
 proc PrintThread
 .InfLoop:
-     ;STOP_POINT
+     STOP_POINT
+     stdcall   Floppy.Init
+     ;stdcall   Floppy.DetectDrives
+
+     ; Чтение загрузочного сектора
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0x7C00 shr 12, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+      
+     stdcall  Floppy.Read, 0, 0, 1, 0x7C00
+
+     stdcall  VGA.PutString, 0x7C00
+     ; Асинхронное чтение нескольких секторов
+     ;stdcall Floppy.ReadAsync, 0, 1, 4, buffer_address, callback_function
+
+     ; Проверка статуса
+     stdcall Floppy.GetStatus
      stdcall   VGA.PrintDec, [Timer.TimerMs]
      stdcall   VGA.PutString, Str.Goida
      ;stdcall   VGA.SetColor, dword[Color2], dword[Color1]
@@ -777,6 +790,7 @@ include 'Interrupt/Timer.asm'
 
 include 'Drivers/VGA.asm'
 include 'Drivers/DMA.asm'
+include 'Drivers/Floppy.asm'
 ;include 'Drivers/Floppy.asm'
 
 putBlocks .consts

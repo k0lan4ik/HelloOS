@@ -118,7 +118,7 @@ BootLoader:
 jmp short start
 nop
 
-OEM_ID                db 'Hello OS'
+OEM_ID                db 'HelloOS',0
 BytesPerSector        dw BYTES_PER_SECTOR
 SectorsPerCluster     db SECTORS_PER_CLUSTER
 ReservedSectors       dw RESERVED_SECTORS

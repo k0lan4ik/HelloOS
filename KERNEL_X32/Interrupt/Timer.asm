@@ -102,8 +102,7 @@ proc Timer.Handle uses esi edi ebx
      
      mov       edi, [Timer.Timers]
      xor       edx, edx
-.ProcessTimerList:
-     
+.ProcessTimerList: 
      test      edi, edi
      jz        .EndTimerList
      sub       [edi + Timer.TimerEnt.Delay], bx
@@ -118,6 +117,7 @@ proc Timer.Handle uses esi edi ebx
 @@:
      mov [Timer.Timers], edi
 .Del:
+     STOP_POINT
      movzx eax, word[esi + Timer.TimerEnt.Tread]
      stdcall Sched.Signal, eax
 
@@ -165,6 +165,11 @@ proc Timer.Sleep, milliseconds
     stdcall Timer.RegisterDelay, eax, [milliseconds]
     stdcall Sched.Block
     ret
+endp
+
+proc Timer.GetTimeMs 
+     mov       eax, [Timer.TimerMs]
+     ret
 endp
 
 

@@ -104,7 +104,7 @@ proc Floppy.Init
     
 
     mov     edi, Floppy.Drives
-    mov     ecx, (FloppyDriveSize * 2 + FloppyBufferSize * 8 + 64) / 4
+    mov     ecx, (FloppyDriveSize * 2 + FloppyBufferSize * 8) / 4
     xor     eax, eax
     rep stosd
     
@@ -165,7 +165,7 @@ proc Floppy.DetectDrives
     mov     byte [Floppy.Drive0 + FloppyDrive.Heads], FLOPPY_1_44MB_HEADS
     mov     byte [Floppy.Drive0 + FloppyDrive.Sectors], FLOPPY_1_44MB_SECTORS
     
-    inc [Floppy.DriveCount]
+    inc     [Floppy.DriveCount]
     
 .NoDrive0:
     mov     al, bl
@@ -208,7 +208,11 @@ proc Floppy.DecodeDriveType
     je      .Type2.88Mb
     cmp     al, 6
     je      .TypeUnknown
+    cmp     al, 0
+    je      .TypeUnknown
     
+
+
     mov     al, FLOPPY_1_44MB
     ret
     
@@ -239,8 +243,8 @@ proc Floppy.ResetController
     out     dx, al
     mov     [Floppy.DOR_State], al
     
-    stdcall Timer.Sleep, 10  ; 10 мс
-    
+    ;stdcall Timer.Sleep, 10  ; 10 мс
+    STOP_POINT
     mov     al, 0x0C            
     mov     dx, FLOPPY_DOR
     out     dx, al
@@ -251,10 +255,12 @@ proc Floppy.ResetController
     
     mov     ecx, 4
 .SenseLoop:
+    
     mov     al, CMD_SENSE_INT
     mov     dx, FLOPPY_FIFO
     out     dx, al
     stdcall Floppy.WaitForFIFO
+    mov     dx, FLOPPY_FIFO
     in      al, dx      
     in      al, dx      
     loop    .SenseLoop
@@ -269,7 +275,7 @@ proc Floppy.ResetController
     out     dx, al
     mov     al, 0x00           
     out     dx, al
-    mov     al, 0x00            
+    mov     al, 0x0F            
     out     dx, al
     mov     al, 0x00            
     out     dx, al
@@ -356,7 +362,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     cmp     byte [ebx + FloppyDrive.Present], 0
     je      .NoDrive
     
-    stdcall Floppy.LBAtoCHS, [lba], [drive] 
+    stdcall Floppy.LBAtoCHS, dword[lba], dword[drive] 
     jc      .ConversionError
     
     mov     [Drive], al
@@ -364,7 +370,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     mov     [Track], cl
     mov     [Sector], dl
     
-    stdcall Floppy.FindInCache, [Drive], [Head], [Track], [Sector]
+    stdcall Floppy.FindInCache, dword[Drive], dword[Head], dword[Track], dword[Sector]
     cmp     eax, -1
     jne     .CacheHit
     
@@ -376,7 +382,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     
     mov     [BufferIndex], ax
     
-    stdcall Floppy.ReadSectors, [Drive], [Head], [Track], [Sector], [count], eax
+    stdcall Floppy.ReadSectors, dword[Drive], dword[Head], dword[Track], dword[Sector], dword[count], eax
     test    eax, eax
     jz      .ReadError
     
@@ -387,7 +393,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     mov     si, [BufferIndex]
     stdcall Floppy.AddToCache
     
-    stdcall Floppy.CopyFromBuffer, [BufferIndex], [buffer], [count]
+    stdcall Floppy.CopyFromBuffer, dword[BufferIndex], dword[buffer], dword[count]
     
     mov     eax, 1
     jmp     .Done
@@ -395,7 +401,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
 .CacheHit:
     
     inc     [Floppy.CacheHits]
-    stdcall Floppy.CopyFromBuffer, eax, [buffer], [count]
+    stdcall Floppy.CopyFromBuffer, eax, dword[buffer], dword[count]
     mov     eax, 1
     jmp     .Done
     
@@ -412,7 +418,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     mov     byte [Floppy.LastError], 0x04
     jmp     .Error
 .ReadError:
-    mov     eax, [BufferIndex]
+    movzx    eax, [BufferIndex]
     stdcall Floppy.ReleaseBuffer
     
 .Error:
@@ -444,7 +450,7 @@ proc Floppy.LBAtoCHS uses ebx, lba, nDrive:BYTE
     movzx   edx, cl      
     movzx   ebx, ch      
     imul    edx, ebx      
-    mov     ebx, [ebx + FloppyDrive.Cylinders]
+    movzx   ebx, [ebx + FloppyDrive.Cylinders]
     imul    edx, ebx      
     
     cmp     eax, edx
@@ -461,8 +467,8 @@ proc Floppy.LBAtoCHS uses ebx, lba, nDrive:BYTE
     xor     edx, edx
     movzx   ebx, ch 
     div     ebx
-    mov     [Heads], dl
-    mov     [Culinder], al
+    mov     [Head], dl
+    mov     [Cylinder], al
     
     cmp     [Cylinder], 79
     ja      .OutOfRange
@@ -503,19 +509,19 @@ proc Floppy.ReadSectors uses ebx esi edi, drive: BYTE, head: BYTE, track: BYTE, 
     cmp     byte [ebx + FloppyDrive.Calibrated], 0
     jne     .AlreadyCalibrated
     
-    stdcall Floppy.Calibrate, [drive]
+    stdcall Floppy.Calibrate, dword[drive]
     test    al, al
     jz      .CalibrationFailed
     
 .AlreadyCalibrated:
     
-    stdcall Floppy.Seek, [drive], [track]
+    stdcall Floppy.Seek, dword[drive], dword[track]
     jc      .SeekFailed
     
-    mov     cx, [count]
+    movzx   cx, [count]
     shl     cx, 9       
 
-    stdcall Floppy.SetupDMA, [esi + FloppyBuffer.PhysAddr], ecx, DMA_FLAG_READ
+    stdcall Floppy.SetupDMA, dword[esi + FloppyBuffer.PhysAddr], ecx, DMA_FLAG_READ
     
     mov     al, CMD_READ_DATA
     mov     dx, FLOPPY_FIFO
@@ -798,7 +804,7 @@ proc Floppy.Seek uses ebx, drive:BYTE, track:BYTE
     jmp .Done
     
 .Timeout:
-.Wrong_track:
+.WrongTrack:
     stc
     
 .Done:    
@@ -834,7 +840,7 @@ proc Floppy.WaitForIRQ uses ebx
     ret
 endp
 
-proc Floppy.WaitForFIFO
+proc Floppy.WaitForFIFO uses ecx
     mov     ecx, 1000000  
     
     mov     dx, FLOPPY_MSR
@@ -858,7 +864,7 @@ proc Floppy.WaitForMSR
     mov     ecx, 1000000
 
     mov     dx, FLOPPY_MSR 
-.wait:
+.Wait:
     in      al, dx
     test    al, 0x80     ; Бит RQM
     jnz     .Ready
@@ -875,7 +881,7 @@ proc Floppy.WaitForMSR
 endp
 
 
-proc Floppy.FindInCache uses esi, drive, head, track, sector
+proc Floppy.FindInCache uses esi, drive:BYTE, head:BYTE, track:BYTE, sector:BYTE
 
     stdcall Mutex.Wait, Floppy.BufferMutex
     
@@ -920,6 +926,28 @@ proc Floppy.FindInCache uses esi, drive, head, track, sector
     
 .Found:
 
+    ret
+endp
+
+proc Floppy.AddToCache, drive:BYTE, head:BYTE, track:BYTE, sector:BYTE, bufferIndex:WORD
+    movzx   eax, [bufferIndex]
+    imul    eax, eax, FloppyBufferSize
+    add     eax, Floppy.Buffers
+    
+    mov     dl, [drive]
+    mov     [eax + FloppyBuffer.Drive], dl
+    mov     dl, [head]
+    mov     [eax + FloppyBuffer.Head], dl
+    mov     dl, [track]
+    mov     [eax + FloppyBuffer.Track], dl
+    mov     dl, [sector]
+    mov     [eax + FloppyBuffer.Sector], dl
+    
+    mov     byte [eax + FloppyBuffer.State], 2  ; BUFFER_READY
+    
+    stdcall Timer.GetTimeMs
+    mov     [eax + FloppyBuffer.Timestamp], eax
+    
     ret
 endp
 
@@ -969,6 +997,20 @@ proc Floppy.GetFreeBuffer uses ebx esi
     ret
 endp
 
+proc Floppy.ReleaseBuffer, bufferIndex:WORD
+    stdcall Mutex.Wait, Floppy.BufferMutex
+    
+    movzx   eax, [bufferIndex]
+    imul    eax, eax, FloppyBufferSize
+    add     eax, Floppy.Buffers
+    
+    mov     byte [eax + FloppyBuffer.State], 0  ; BUFFER_FREE
+    inc     [Floppy.FreeBuffers]
+    
+    stdcall Mutex.Release, Floppy.BufferMutex
+    ret
+endp
+
 proc Floppy.EvictLRUBuffer uses ebx esi
     
     mov     esi, Floppy.Buffers
@@ -992,13 +1034,13 @@ proc Floppy.EvictLRUBuffer uses ebx esi
     loop    .FindLRU
     
     test    edx, edx
-    jz      NotFound
+    jz      .NotFound
     
     cmp     byte [edx + FloppyBuffer.State], 3  ; BUFFER_DIRTY
     jne     .CleanBuffer
     
     push    edx
-    stdcall Floppy.WriteBackBuffer
+    stdcall Floppy.WriteBackBuffer, edx
     pop     edx
     test    al, al
     jz      .WriteFailed
@@ -1013,6 +1055,391 @@ proc Floppy.EvictLRUBuffer uses ebx esi
     mov     eax, -1
     
 .Done:
+    ret
+endp
+
+proc Floppy.WriteBackBuffer uses ebx esi edi, bufferPtr:DWORD
+    mov     esi, [bufferPtr]
+    
+    cmp     byte [esi + FloppyBuffer.State], 3  ; BUFFER_DIRTY
+    jne     .NoWriteNeeded
+    
+    movzx   eax, byte [esi + FloppyBuffer.Drive]
+    movzx   ebx, byte [esi + FloppyBuffer.Head]
+    movzx   ecx, byte [esi + FloppyBuffer.Track]
+    movzx   edx, byte [esi + FloppyBuffer.Sector]
+    movzx   edi, byte [esi + FloppyBuffer.Count]
+    
+    push    eax ecx edx
+    stdcall Floppy.MotorOn, eax
+    pop     edx ecx eax
+    
+ 
+    imul    ebx, eax, FloppyDriveSize
+    add     ebx, Floppy.Drive0
+    
+    cmp     byte [ebx + FloppyDrive.Calibrated], 0
+    jne     .AlreadyCalibrated
+    
+    push    eax ecx edx 
+    stdcall Floppy.Calibrate, eax
+    pop     edx ecx eax
+    test    al, al
+    jz      .WriteFailed
+    
+.AlreadyCalibrated:
+    
+    push    eax ecx edx
+    stdcall Floppy.Seek, eax, ecx
+    pop     edx ecx eax
+    jc      .WriteFailed
+    
+    
+    movzx   ecx, di
+    shl     ecx, 9  ; *512
+    
+    push    eax ecx edx 
+    stdcall Floppy.SetupDMA, [esi + FloppyBuffer.PhysAddr], ecx, DMA_FLAG_WRITE
+    pop     edx ecx eax
+    
+    mov     al, CMD_WRITE_DATA
+    mov     dx, FLOPPY_FIFO
+    out     dx, al
+    
+    mov     al, [esi + FloppyBuffer.Head]
+    shl     al, 2
+    or      al, [esi + FloppyBuffer.Drive]
+    out     dx, al
+    
+    mov     al, [esi + FloppyBuffer.Track]
+    out     dx, al
+    
+    mov     al, [esi + FloppyBuffer.Head]
+    out     dx, al
+    
+    mov     al, [esi + FloppyBuffer.Sector]
+    out     dx, al
+    
+    mov     al, 2  ; Размер сектора (512 байт)
+    out     dx, al
+    
+    mov     al, [esi + FloppyBuffer.Count]
+    out     dx, al
+    
+    mov     al, 0x1B  ; GAP3
+    out     dx, al
+    
+    mov     al, 0xFF  ; DTL
+    out     dx, al
+    
+
+    stdcall Floppy.WaitForIRQ
+    jc      .WriteFailed
+    
+    
+    mov     ecx, 7
+.ReadResults:
+    stdcall Floppy.WaitForFIFO
+    mov     dx, FLOPPY_FIFO
+    in      al, dx
+    mov     [.results + ecx - 1], al
+    loop    .ReadResults
+    
+    mov     al, [.results]
+    and     al, 0xC0
+    cmp     al, ST0_IC_NORMAL
+    je      .WriteSuccess
+    cmp     al, ST0_IC_ABNORMAL
+    je      .WriteFailed
+    cmp     al, ST0_IC_INVALID
+    je      .WriteFailed
+    
+.WriteSuccess:
+    movzx   ebx, [esi + FloppyBuffer.Drive]
+    imul    ebx, ebx, FloppyDriveSize
+    add     ebx, Floppy.Drive0
+    mov     al, [esi + FloppyBuffer.Track]
+    mov     [ebx + FloppyDrive.CurTrack], al
+    
+    mov     byte [esi + FloppyBuffer.State], 2  ; BUFFER_READY
+.NoWriteNeeded:
+    mov     eax, 1
+    ret
+    
+.WriteFailed:
+    mov     eax, 0
+    ret
+    
+.results db 7 dup(0)
+endp
+
+proc Floppy.Write uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer: DWORD
+    locals
+        Drive       db ?
+        Head        db ?
+        Track       db ?
+        Sector      db ?
+        Count       db ?
+        BufferIndex dw ?
+    endl
+    
+    cmp     [count], 0
+    je      .Invalid
+    cmp     [count], 18
+    ja      .Invalid
+    
+    movzx   ebx, [drive]
+    imul    ebx, ebx, FloppyDriveSize
+    add     ebx, Floppy.Drive0
+    cmp     byte [ebx + FloppyDrive.Present], 0
+    je      .NoDrive
+    
+    stdcall Floppy.LBAtoCHS, dword[lba], dword[drive]
+    jc      .ConversionError
+    
+    mov     [Drive], al
+    mov     [Head], bl
+    mov     [Track], cl
+    mov     [Sector], dl
+    mov     al, [count]
+    mov     [Count], al
+    
+    ; Проверяем кэш
+    stdcall Floppy.FindInCache, dword[Drive], dword[Head], dword[Track], dword[Sector]
+    cmp     eax, -1
+    je      .CacheMiss
+    
+    ; Нашли в кэше - помечаем как грязный
+    mov     [BufferIndex], ax
+    movzx   eax, ax
+    imul    eax, eax, FloppyBufferSize
+    add     eax, Floppy.Buffers
+    mov     byte [eax + FloppyBuffer.State], 3  ; BUFFER_DIRTY
+    
+    jmp     .CopyToBuffer
+    
+.CacheMiss:
+    ; Получаем свободный буфер
+    stdcall Floppy.GetFreeBuffer
+    cmp     eax, -1
+    je      .NoBuffer
+    
+    mov     [BufferIndex], ax
+    
+.CopyToBuffer:
+    ; Копируем данные в буфер
+    movzx   eax, [BufferIndex]
+    imul    eax, eax, FloppyBufferSize
+    add     eax, Floppy.Buffers
+    
+    mov     edi, [eax + FloppyBuffer.VirtAddr]
+    mov     esi, [buffer]
+    movzx   ecx, [Count]
+    shl     ecx, 9  ; *512
+    rep movsb
+    
+    ; Обновляем метаданные буфера
+    movzx   eax, [BufferIndex]
+    push    eax
+    mov     al, [Drive]
+    mov     bl, [Head]
+    mov     cl, [Track]
+    mov     dl, [Sector]
+    mov     si, [BufferIndex]
+    stdcall Floppy.AddToCache
+    pop     eax
+    
+    ; Если буфер новый, помечаем как грязный
+    movzx   eax, eax
+    imul    eax, eax, FloppyBufferSize
+    add     eax, Floppy.Buffers
+    mov     byte [eax + FloppyBuffer.State], 3  ; BUFFER_DIRTY
+    
+    ; Отложенная запись - просто возвращаем успех
+    mov     eax, 1
+    jmp     .Done
+    
+.Invalid:
+    mov     byte [Floppy.LastError], 0x20
+    jmp     .Error
+.NoDrive:
+    mov     byte [Floppy.LastError], 0x21
+    jmp     .Error
+.ConversionError:
+    mov     byte [Floppy.LastError], 0x22
+    jmp     .Error
+.NoBuffer:
+    mov     byte [Floppy.LastError], 0x23
+    jmp     .Error
+    
+.Error:
+    xor     eax, eax
+    
+.Done:
+    ret
+endp
+
+; Функция форматирования дорожки
+proc Floppy.FormatTrack uses ebx esi edi, drive: BYTE, track: BYTE, head: BYTE, formatData: DWORD
+    locals
+        BufferIndex dw ?
+    endl
+    
+    movzx   ebx, [drive]
+    imul    ebx, ebx, FloppyDriveSize
+    add     ebx, Floppy.Drive0
+    cmp     byte [ebx + FloppyDrive.Present], 0
+    je      .NoDrive
+    
+    ; Включаем мотор
+    stdcall Floppy.MotorOn, dword[drive]
+    
+    ; Калибруем при необходимости
+    cmp     byte [ebx + FloppyDrive.Calibrated], 0
+    jne     .AlreadyCalibrated
+    
+    stdcall Floppy.Calibrate, dword[drive]
+    test    al, al
+    jz      .CalibrationFailed
+    
+.AlreadyCalibrated:
+    ; Перемещаем головку
+    stdcall Floppy.Seek, dword[drive], dword[track]
+    jc      .SeekFailed
+    
+    ; Получаем буфер для данных форматирования
+    stdcall Floppy.GetFreeBuffer
+    cmp     eax, -1
+    je      .NoBuffer
+    
+    mov     [BufferIndex], ax
+    
+    ; Копируем данные форматирования в буфер
+    movzx   eax, ax
+    imul    eax, eax, FloppyBufferSize
+    add     eax, Floppy.Buffers
+    
+    mov     edi, [eax + FloppyBuffer.VirtAddr]
+    mov     esi, [formatData]
+    mov     ecx, 4 * 18  ; 4 байта на сектор * 18 секторов
+    rep movsb
+    
+    ; Настраиваем DMA
+    mov     eax, [eax + FloppyBuffer.PhysAddr]
+    mov     cx, 4 * 18
+    stdcall Floppy.SetupDMA, eax, ecx, DMA_FLAG_WRITE
+    
+    ; Отправляем команду форматирования
+    mov     al, CMD_FORMAT_TRACK
+    mov     dx, FLOPPY_FIFO
+    out     dx, al
+    
+    mov     al, [head]
+    shl     al, 2
+    or      al, [drive]
+    out     dx, al
+    
+    mov     al, 2  ; Размер сектора (512 байт)
+    out     dx, al
+    
+    mov     al, 18  ; Секторов на дорожке
+    out     dx, al
+    
+    mov     al, 0x54  ; GAP3 для форматирования
+    out     dx, al
+    
+    mov     al, 0xFF  ; DTL
+    out     dx, al
+    
+    ; Ждем прерывания
+    stdcall Floppy.WaitForIRQ
+    jc      .FormatTimeout
+    
+    ; Читаем результаты
+    mov     ecx, 7
+.ReadResults:
+    stdcall Floppy.WaitForFIFO
+    mov     dx, FLOPPY_FIFO
+    in      al, dx
+    mov     [.results + ecx - 1], al
+    loop    .ReadResults
+    
+    ; Проверяем статус
+    mov     al, [.results]
+    and     al, 0xC0
+    cmp     al, ST0_IC_NORMAL
+    je      .FormatSuccess
+    cmp     al, ST0_IC_ABNORMAL
+    je      .FormatFailed
+    cmp     al, ST0_IC_INVALID
+    je      .FormatFailed
+    
+.FormatSuccess:
+    ; Освобождаем буфер
+    stdcall Floppy.ReleaseBuffer, [BufferIndex]
+    
+    ; Обновляем позицию головки
+    movzx   ebx, [drive]
+    imul    ebx, ebx, FloppyDriveSize
+    add     ebx, Floppy.Drive0
+    mov     al, [track]
+    mov     [ebx + FloppyDrive.CurTrack], al
+    
+    mov     eax, 1
+    jmp     .Done
+    
+.NoDrive:
+    mov     byte [Floppy.LastError], 0x30
+    jmp     .Error
+.CalibrationFailed:
+    mov     byte [Floppy.LastError], 0x31
+    jmp     .Error
+.SeekFailed:
+    mov     byte [Floppy.LastError], 0x32
+    jmp     .Error
+.NoBuffer:
+    mov     byte [Floppy.LastError], 0x33
+    jmp     .Error
+.FormatTimeout:
+    mov     byte [Floppy.LastError], 0x34
+    jmp     .Error
+.FormatFailed:
+    mov     byte [Floppy.LastError], 0x35
+    ; Освобождаем буфер
+    stdcall Floppy.ReleaseBuffer, [BufferIndex]
+    
+.Error:
+    xor     eax, eax
+    
+.Done:
+    ret
+    
+.results db 7 dup(0)
+endp
+
+; Функция получения информации о дисководе
+proc Floppy.GetDriveInfo, drive: BYTE
+    movzx   eax, [drive]
+    cmp     al, 0
+    je      .Drive0
+    cmp     al, 1
+    je      .Drive1
+    xor     eax, eax
+    ret
+    
+.Drive0:
+    mov     eax, Floppy.Drive0
+    ret
+.Drive1:
+    mov     eax, Floppy.Drive1
+    ret
+endp
+
+; Функция проверки наличия диска
+proc Floppy.CheckDiskChange, drive: BYTE
+    ; Для упрощения всегда возвращаем "диск не менялся"
+    ; В реальной реализации нужно проверять бит изменения диска в контроллере
+    mov     eax, 0
     ret
 endp
 
@@ -1061,10 +1488,10 @@ proc Floppy.ServiceThread
     
 .ProcessRead:
     stdcall Floppy.Read, \
-                    [esi + FloppyRequest.Drive], \
-                    [esi + FloppyRequest.LBA], \
-                    [esi + FloppyRequest.Count], \
-                    [esi + FloppyRequest.Buffer]
+                    dword[esi + FloppyRequest.Drive], \
+                    dword[esi + FloppyRequest.LBA], \
+                    dword[esi + FloppyRequest.Count], \
+                    dword[esi + FloppyRequest.Buffer]
     test    al, al
     jnz     @F
     mov     [esi + FloppyRequest.Status], 1
@@ -1101,7 +1528,7 @@ proc Floppy.MotorManagerThread
     jne     .CheckDrive1
     
     stdcall Timer.GetTimeMs
-    cmp     eax, [Floppy.Drive0 + FloppyDrive.MotorTimer]
+    cmp     eax, dword[Floppy.Drive0 + FloppyDrive.MotorTimer]
     jbe     .CheckDrive1
     
     mov     al, [Floppy.DOR_State]
@@ -1117,7 +1544,7 @@ proc Floppy.MotorManagerThread
     jne     .Sleep
     
     stdcall Timer.GetTimeMs
-    cmp     eax, [Floppy.Drive1 + FloppyDrive.MotorTimer]
+    cmp     eax, dword[Floppy.Drive1 + FloppyDrive.MotorTimer]
     jbe     .Sleep
     
     mov     al, [Floppy.DOR_State]
@@ -1201,7 +1628,7 @@ proc Floppy.ReadAsync uses ebx, drive: BYTE, lba: DWORD, count: BYTE, buffer: DW
     test    eax, eax
     jz      .SubmitFailed
     
-    mov eax, ebx
+    mov     eax, ebx
     ret
     
 .SubmitFailed:
@@ -1216,33 +1643,28 @@ endp
 proc Floppy.GetStatus
     xor     eax, eax
     
-    ; Бит 0: драйвер инициализирован
     cmp     [Floppy.Initialized], 0
     je      .NotInitialized
     or      eax, 1
     
 .NotInitialized:
-    ; Бит 1: есть дисковод 0
     cmp     [Floppy.Drive0 + FloppyDrive.Present], 0
-    je      .no_drive0
+    je      .NoDrive0
     or      eax, 2
     
 .NoDrive0:
-    ; Бит 2: есть дисковод 1
     cmp     [Floppy.Drive1 + FloppyDrive.Present], 0
-    je      .no_drive1
+    je      .NoDrive1
     or      eax, 4
     
 .NoDrive1:
-    ; Бит 3: мотор 0 включен
     cmp     [Floppy.Drive0 + FloppyDrive.MotorState], 0
-    je      .motor0_off
+    je      .Motor0Off
     or      eax, 8
     
 .Motor0Off:
-    ; Бит 4: мотор 1 включен
     cmp     [Floppy.Drive1 + FloppyDrive.MotorState], 0
-    je      .motor1_off
+    je      .Motor1Off
     or      eax, 16
     
 .Motor1Off:
@@ -1338,37 +1760,32 @@ block(.data){
     ; Информация о дисководах
     Floppy.Drive0        db FloppyDriveSize dup (?)  ; Структура дисковода 0
     Floppy.Drive1        db FloppyDriveSize dup (?)  ; Структура дисковода 1
-    Floppy.DriveCount    db ?                         ; Количество обнаруженных дисководов
     
-    ; Очередь запросов
-    Floppy.RequestQueue  dd ?   ; Указатель на первый запрос
-    Floppy.RequestTail   dd ?   ; Указатель на последний запрос
-    
+   
     ; Буферы для кэширования (8 буферов по 18KB)
     Floppy.Buffers       db FloppyBufferSize * 8 dup (?)
     Floppy.BufferCount   dd ?   ; Количество буферов (всегда 8)
     Floppy.FreeBuffers   dd ?   ; Количество свободных буферов
+
+     ; Очередь запросов
+    Floppy.RequestQueue  dd ?   ; Указатель на первый запрос
+    Floppy.RequestTail   dd ?   ; Указатель на последний запрос
     
+
     ; Состояние контроллера
     Floppy.DOR_State     db ?   ; Текущее значение регистра DOR
-    Floppy.IRQReceived   db ?   ; Флаг получения прерывания
-    
     ; ID сервисных потоков
     Floppy.ServiceThreadID  dw ?
     Floppy.MotorThreadID    dw ?
     
     ; Статистика и отладка
     Floppy.CacheHits     dd ?   ; Количество попаданий в кэш
-    Floppy.CacheMisses   dd ?   ; Количество промахов кэша
-    Floppy.LastError     db ?   ; Код последней ошибки
-    Floppy.Initialized   db ?   ; Флаг инициализации (1 = инициализирован)
-    
+    Floppy.CacheMisses   dd ?   ; Количество промахов кэша 
     ; Константа владельца для DMA Manager
     FLOPPY_OWNER_ID      = 0x464C4F50  ; 'FLOP' в ASCII
 }
 
 block(.initData){
-    ; Начальные значения переменных
     Floppy.Initialized   db 0
     Floppy.DriveCount    db 0
     Floppy.IRQReceived   db 0
