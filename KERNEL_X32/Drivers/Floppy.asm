@@ -244,7 +244,7 @@ proc Floppy.ResetController
     mov     [Floppy.DOR_State], al
     
     ;stdcall Timer.Sleep, 10  ; 10 мс
-    STOP_POINT
+
     mov     al, 0x0C            
     mov     dx, FLOPPY_DOR
     out     dx, al
@@ -350,7 +350,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
         Count       db ?
         BufferIndex dw ?
     endl
-
+    STOP_POINT
     cmp     [count], 0
     je      .Invalid
     cmp     [count], 18
@@ -366,9 +366,9 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     jc      .ConversionError
     
     mov     [Drive], al
-    mov     [Head], bl
-    mov     [Track], cl
-    mov     [Sector], dl
+    mov     [Head], ah
+    mov     [Track], dl
+    mov     [Sector], dh
     
     stdcall Floppy.FindInCache, dword[Drive], dword[Head], dword[Track], dword[Sector]
     cmp     eax, -1
@@ -386,12 +386,9 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     test    eax, eax
     jz      .ReadError
     
-    mov     al, [Drive]
-    mov     bl, [Head]
-    mov     cl, [Track]
-    mov     dl, [Sector]
-    mov     si, [BufferIndex]
-    stdcall Floppy.AddToCache
+
+    STOP_POINT
+    stdcall Floppy.AddToCache, dword[Drive], dword[Head], dword[Track], dword[Sector], dword[BufferIndex]
     
     stdcall Floppy.CopyFromBuffer, dword[BufferIndex], dword[buffer], dword[count]
     
@@ -429,17 +426,15 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
 endp
 
 
-; AL = drive, BL = head, CL = track, DL = sector
+; AL = drive, AH = head, DL = track, DH = sector
 ; CF = 1 при ошибке
 proc Floppy.LBAtoCHS uses ebx, lba, nDrive:BYTE 
     locals
-        Drive    db ?
         Cylinder db ?
         Head     db ?
         Sector   db ?
     endl
 
-    mov     eax, [lba]
     movzx   ebx, [nDrive]
     imul    ebx, ebx, FloppyDriveSize
     add     ebx, Floppy.Drive0
@@ -448,11 +443,12 @@ proc Floppy.LBAtoCHS uses ebx, lba, nDrive:BYTE
     mov     ch, [ebx + FloppyDrive.Sectors]
     
     movzx   edx, cl      
-    movzx   ebx, ch      
-    imul    edx, ebx      
+    movzx   eax, ch      
+    imul    edx, eax      
     movzx   ebx, [ebx + FloppyDrive.Cylinders]
-    imul    edx, ebx      
+    imul    edx, eax      
     
+    mov     eax, [lba]
     cmp     eax, edx
     jae     .OutOfRange
 
@@ -477,10 +473,10 @@ proc Floppy.LBAtoCHS uses ebx, lba, nDrive:BYTE
     cmp     [Sector], 18
     ja      .OutOfRange
     
-    mov     al, [Drive]
-    mov     bl, [Head]
-    mov     cl, [Cylinder]
-    mov     dl, [Sector]
+    mov     al, [nDrive]
+    mov     ah, [Head]
+    mov     dl, [Cylinder]
+    mov     dh, [Sector]
     
     clc
     jmp     .Done
@@ -555,13 +551,13 @@ proc Floppy.ReadSectors uses ebx esi edi, drive: BYTE, head: BYTE, track: BYTE, 
     
     stdcall Floppy.WaitForIRQ
     jc      .IrqTimeout
-    
     mov ecx, 7
 .ReadResults:
     stdcall Floppy.WaitForFIFO
     mov     dx, FLOPPY_FIFO
     in      al, dx
-    mov     [.results + ecx - 1], al
+    mov     edx, .results 
+    mov     [edx + ecx - 1], al
     loop    .ReadResults
     
     mov     al, [.results]
@@ -622,11 +618,10 @@ proc Floppy.ReadSectors uses ebx esi edi, drive: BYTE, head: BYTE, track: BYTE, 
 endp
 
 
-proc Floppy.SetupDMA uses ebx, phys, size:WORD, mode:BYTE 
+proc Floppy.SetupDMA phys, size:WORD, mode:BYTE 
     
-    mov     eax, [phys]
     mov     cx, [size]
-    mov     bl, [mode]
+   
 
    
     mov     al, 0x06          ; Маска канала 2
@@ -636,12 +631,14 @@ proc Floppy.SetupDMA uses ebx, phys, size:WORD, mode:BYTE
     mov     al, 0xFF
     out     0x0C, al          ; Запись любого значения сбрасывает триггер
     
+    mov     eax, [phys]
     mov     dx, 0x04          ; Адресный регистр канала 2
     out     dx, al            ; Младший байт
     mov     al, ah
     out     dx, al            ; Старший байт
 
 
+   
     shr     eax, 16           ; Получаем старший байт адреса
     mov     dx, 0x81          ; Регистр страницы канала 2
     out     dx, al
@@ -657,7 +654,7 @@ proc Floppy.SetupDMA uses ebx, phys, size:WORD, mode:BYTE
     mov     al, ah
     out     dx, al            ; Старший байт
 
-    mov     al, bl            ; Режим (чтение или запись)
+    mov     al, [mode]        ; Режим (чтение или запись)
     out     0x0B, al
     
     mov     al, 0x02
@@ -692,7 +689,7 @@ proc Floppy.MotorOn uses ebx, drive:BYTE
 
     mov     byte [ebx + FloppyDrive.MotorState], 2
     
-    stdcall Timer.Sleep, MOTOR_DELAY_MS
+    ;stdcall Timer.Sleep, MOTOR_DELAY_MS
     
     mov byte [ebx + FloppyDrive.MotorState], 1
     
@@ -915,7 +912,7 @@ proc Floppy.FindInCache uses esi, drive:BYTE, head:BYTE, track:BYTE, sector:BYTE
     mov     eax, 8
     sub     eax, ecx  
     
-    stdcall Mutex.Release, Floppy.BufferMutex
+    
     jmp     .Found
     
 .Next:
@@ -925,28 +922,28 @@ proc Floppy.FindInCache uses esi, drive:BYTE, head:BYTE, track:BYTE, sector:BYTE
     mov     eax, -1
     
 .Found:
-
+    stdcall Mutex.Release, Floppy.BufferMutex
     ret
 endp
 
-proc Floppy.AddToCache, drive:BYTE, head:BYTE, track:BYTE, sector:BYTE, bufferIndex:WORD
+proc Floppy.AddToCache uses ebx, drive:BYTE, head:BYTE, track:BYTE, sector:BYTE, bufferIndex:WORD
     movzx   eax, [bufferIndex]
-    imul    eax, eax, FloppyBufferSize
-    add     eax, Floppy.Buffers
+    imul    ebx, eax, FloppyBufferSize
+    add     ebx, Floppy.Buffers
     
     mov     dl, [drive]
-    mov     [eax + FloppyBuffer.Drive], dl
+    mov     [ebx + FloppyBuffer.Drive], dl
     mov     dl, [head]
-    mov     [eax + FloppyBuffer.Head], dl
+    mov     [ebx + FloppyBuffer.Head], dl
     mov     dl, [track]
-    mov     [eax + FloppyBuffer.Track], dl
+    mov     [ebx + FloppyBuffer.Track], dl
     mov     dl, [sector]
-    mov     [eax + FloppyBuffer.Sector], dl
+    mov     [ebx + FloppyBuffer.Sector], dl
     
-    mov     byte [eax + FloppyBuffer.State], 2  ; BUFFER_READY
+    mov     byte [ebx + FloppyBuffer.State], 2  ; BUFFER_READY
     
     stdcall Timer.GetTimeMs
-    mov     [eax + FloppyBuffer.Timestamp], eax
+    mov     [ebx + FloppyBuffer.Timestamp], eax
     
     ret
 endp
@@ -1142,7 +1139,8 @@ proc Floppy.WriteBackBuffer uses ebx esi edi, bufferPtr:DWORD
     stdcall Floppy.WaitForFIFO
     mov     dx, FLOPPY_FIFO
     in      al, dx
-    mov     [.results + ecx - 1], al
+    mov     edx, .results
+    mov     [edx + ecx - 1], al
     loop    .ReadResults
     
     mov     al, [.results]
@@ -1198,9 +1196,9 @@ proc Floppy.Write uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer
     jc      .ConversionError
     
     mov     [Drive], al
-    mov     [Head], bl
-    mov     [Track], cl
-    mov     [Sector], dl
+    mov     [Head], ah
+    mov     [Track], dl
+    mov     [Sector], dh
     mov     al, [count]
     mov     [Count], al
     

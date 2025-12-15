@@ -139,6 +139,8 @@ VolumeID              dd 12345678h
 VolumeLabel           db 'NO NAME    '
 FileSystemType        db 'FAT16   '
 
+BootAdr = 0x600
+
 start:
 
 root_dir_ofs:
@@ -276,7 +278,7 @@ Continue:
         mov     ax, [bx + 30]
         mov     [data_kernel_size + 2], ax
         mov     ax, [bx + 26]
-        mov     di, $0600 ; ??? ????????
+        mov     di, BootAdr ; ??? ????????
 .LoadLoop:
         mov     bx, $8000
         add     bx, ax
@@ -306,6 +308,14 @@ Continue:
         
 
         add     di, [BytesPerSector]
+;        jnc     @F
+;        push    es
+;        pop     cx
+;        inc     cx
+;        push    cx
+;        pop     es
+
+;@@:        
         pop     cx
 
 
@@ -322,7 +332,7 @@ Continue:
         jb      .LoadLoop
         ;mov     ax, [data_kernel_size]
         ;mov     dx, [data_kernel_size + 2]
-        jmp      $0000:$0600 ; ? ??? ????????
+        jmp      $0000:BootAdr ; ? ??? ????????
 
 lba_to_chs:
         cmp     dx, [SectorsPerTrack]

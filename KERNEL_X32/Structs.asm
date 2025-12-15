@@ -12,9 +12,8 @@ Real.PageTable1 = PageTable1 - Options.Kernel.HierHalf
 }
 
 block(.structs){
-     times (16 - ($ mod 16)) db ?
-
-
+     
+;virtual at Options.Kernel.HierHalf + $7000
 GDT:
      times 10 dq ?
 GDTend:
@@ -69,7 +68,7 @@ TSS:
      .IOPB       dw ?
      .SSP        dd ?
 TSSend:
-
+;end virtual
 PageDirectory = 0x80000
      
 PageTable1 = PageDirectory +  4096 * 4

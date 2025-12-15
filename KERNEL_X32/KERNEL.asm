@@ -564,7 +564,7 @@ org Options.Kernel.HierHalf + $
      stdcall   VGA.PutString, Str.A 
 
      stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0xFF002, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     stdcall   Pager.MapPage, 0xFE002, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      stdcall   VGA.PutString, Str.A 
 
@@ -575,7 +575,8 @@ org Options.Kernel.HierHalf + $
      stdcall   VGA.PutString, Str.A 
 
      ;тут вместо регистра надо адрес таблицы и IDT и GDT
-     stdcall   Pager.MapPage, 0xFF100, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     
+     stdcall   Pager.MapPage, 0xFF100, Real.GDT shr 12,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      ;Переназначение таблицы
      
@@ -631,8 +632,8 @@ org Options.Kernel.HierHalf + $
      jmp       $
 
 proc PrintThread
-.InfLoop:
-     STOP_POINT
+
+     
      stdcall   Floppy.Init
      ;stdcall   Floppy.DetectDrives
 
@@ -648,6 +649,10 @@ proc PrintThread
 
      ; Проверка статуса
      stdcall Floppy.GetStatus
+     STOP_POINT
+     ;stdcall FAT16.Init
+     ;stdcall FAT16.Mount, 0
+.InfLoop:
      stdcall   VGA.PrintDec, [Timer.TimerMs]
      stdcall   VGA.PutString, Str.Goida
      ;stdcall   VGA.SetColor, dword[Color2], dword[Color1]
@@ -791,7 +796,7 @@ include 'Interrupt/Timer.asm'
 include 'Drivers/VGA.asm'
 include 'Drivers/DMA.asm'
 include 'Drivers/Floppy.asm'
-;include 'Drivers/Floppy.asm'
+include 'Drivers/FAT16.asm'
 
 putBlocks .consts
 putBlocks .text
@@ -799,3 +804,4 @@ putBlocks .initData
 putBlocks .data
 putBlocks .structs
 Kernel.EndMem = $
+IDE.Write $

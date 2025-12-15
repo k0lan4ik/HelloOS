@@ -60,13 +60,13 @@ proc HardwInt.RegInt, hwint
      cmp       [ecx * 4 + edx + HardwInt.Hand.Mutex], 1
      je        @B
 
-     test      eax, [hwint]
+     cmp       eax, [hwint]
      jnz       @F
      cmp       [eax * 4 + edx + HardwInt.Hand.Mutex], 0
      jne       @F
      xchg      eax, ecx
      jmp       .EndWrite
-@@:
+@@:  
      mov       [eax * 4 + edx + HardwInt.Hand.Next], cl
 
 .EndWrite:
@@ -179,20 +179,20 @@ HardwInt.GenHandler:
 
      mov       edx, HardwInt.Hand
      IDE.Write $
-     cmp       [eax + edx + HardwInt.Hand.Mutex], 1
+     cmp       [eax * 4 + edx + HardwInt.Hand.Mutex], 1
      jnz       @F
-     mov       [eax + edx + HardwInt.Hand.Mutex], 0
-     push      eax
+     mov       [eax * 4 + edx + HardwInt.Hand.Mutex], 0
+     push      eax edx
      stdcall   Sched.Signal, dword[eax + edx + HardwInt.Hand.Tid]
-     pop       eax
+     pop       edx eax
 @@:
-     cmp       [eax + edx + HardwInt.Hand.Next], 0
+     cmp       [eax * 4 + edx + HardwInt.Hand.Next], 0
      jz        .EndLoop
-     movzx     eax, [eax + edx + HardwInt.Hand.Next]
-     mov       [eax + edx + HardwInt.Hand.Mutex], 0
-     push      eax
-     stdcall   Sched.Signal, dword[eax + edx + HardwInt.Hand.Tid]
-     pop       eax
+     movzx     eax, [eax * 4 + edx + HardwInt.Hand.Next]
+     mov       [eax * 4 + edx + HardwInt.Hand.Mutex], 0
+     push      edx eax
+     stdcall   Sched.Signal, dword[eax * 4 + edx + HardwInt.Hand.Tid]
+     pop       eax edx
      jmp       @B
 .EndLoop:
 
