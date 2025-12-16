@@ -240,6 +240,6 @@ proc Pager.HandlePF uses ebx edi, error, eeip
 .SkipLoop:
      pop       ecx
      loop      @B
-
+     ret
 endp
 }

@@ -6,14 +6,15 @@ block(.text) {
 
 proc XInt.Init
      stdcall   GS.Base
+     
      add       eax, GS.XhTable
      mov       [XInt.ExceptHandler], eax
-
+     PRINT_STOP
      mov       ecx, 32
 @@:
-     mov       dword[ecx * 4 + eax], XInt.Empty
+     mov       dword[ecx * 4 + eax-4], XInt.Empty
      loop      @B
-
+     
      stdcall   IntHeand.SetIntSave, 0, XInt.Ex0
      stdcall   IntHeand.SetIntSave, 1, XInt.Ex1
      stdcall   IntHeand.SetIntSave, 2, XInt.Nmi
@@ -32,6 +33,8 @@ proc XInt.Init
      stdcall   IntHeand.SetIntSave, 17, XInt.Ex17
      stdcall   IntHeand.SetIntSave, 18, XInt.Ex18
      stdcall   IntHeand.SetIntSave, 19, XInt.Ex19
+
+    
 
      stdcall   XInt.Register, 0, XInt.DoDivideError
      stdcall   XInt.Register, 6, XInt.DoInvalidOpcode

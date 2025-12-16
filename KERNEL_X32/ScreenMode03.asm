@@ -118,8 +118,9 @@ proc ScreenMode03.PrintSymbol ;{ Выводит символ в консоль
 
 endp
 
-proc ScreenMode03.PrintString uses esi eax;{ Выводит cтроку, кончающуюся на 0 в консоль
+proc ScreenMode03.PrintString uses esi eax, strptr;{ Выводит cтроку, кончающуюся на 0 в консоль
 ; DS:ESI
+     mov  esi, [strptr]
 @@:    
      lodsb
      test      al, al

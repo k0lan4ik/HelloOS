@@ -14,6 +14,7 @@ Real.PageTable1 = PageTable1 - Options.Kernel.HierHalf
 block(.structs){
      
 ;virtual at Options.Kernel.HierHalf + $7000
+ times (16 - ($ mod 16)) db ?
 GDT:
      times 10 dq ?
 GDTend:

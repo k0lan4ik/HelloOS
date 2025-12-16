@@ -21,8 +21,36 @@ proc GS.Init
 endp
 
 proc GS.Base
-     xor       edx, edx
-     mov       eax, [gs:edx]
+     ;xor       edx, edx
+     mov       eax, 0xFF000000
+     mov       eax, [eax]
+     push      eax
+     mov     edi, $f00B8010
+     shr     eax, 16
+     xchg    eax, ebx     
+     mov     cx, 4
+@@:
+    rol     bx, 4
+    mov     ax, bx
+    and     al, 0000'0000_0000'1111b
+
+    cmp     al, $0A
+    sbb     al, $69
+    das
+    mov     ah, $07
+    
+    stosw
+    loop    @B
+
+
+     pop       eax
+     cmp       eax, 0xFF000000 
+     sete      al
+     add       al, 'A'
+     mov       ah, $be 
+     stosw
+     cli
+     hlt 
      ret
 endp
 }

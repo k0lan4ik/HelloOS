@@ -34,6 +34,24 @@ macro STOP_POINT {
      \}
 }
 
+macro PRINT_STOP  {
+     match =DEBUG, DEBUG 
+     \{
+          rept 0 \\{
+     \}
+     match , 
+     \{
+          
+          mov ax, $be00 or 'S' 
+          mov  edi, $f00B8000
+          mov  [edi], ax
+          cli
+          hlt 
+          
+     \}
+}
+
+
 ; чтобы всё поместилось сделаю загрузку на 4000 ядра
 block(.consts) {
 GDT_NULL_SELECTOR     equ 0x00
@@ -66,9 +84,8 @@ RealEntry:
      mov     sp, Options.Kernel.Base
 
      cli
-     
      call      EnableA20WithMessage     
-
+     
 
      sti
      
@@ -86,7 +103,9 @@ RealEntry:
      mov ah,02h               
      int 10h
      cli
+     
      call CreateGDT_IDT
+     
 jmp GotoProtected 
 
 
@@ -370,7 +389,7 @@ proc CreateDescriptor;{Создание дескриптора в реально
 endp
 
 GotoProtected:   
-       
+        
      mov       di,  Options.Kernel.Base + 4
      xor       ebx, ebx
      xor       ebp, ebp
@@ -384,7 +403,7 @@ GotoProtected:
      mov       edx, 0x0534D4150
      cmp       eax, edx
      jne       .Error
-
+     
      test      ebx, ebx
      jz        .Error
      jmp       .TestEntry
@@ -416,7 +435,7 @@ GotoProtected:
 .E820f:
         mov       [es:Options.Kernel.Base], ebp
      
-
+     
      
      cli
 
@@ -464,7 +483,7 @@ proc Paging.Init
      mov       eax, 0x00000002 ; Supervisor, R/W, Not Present
      rep stosd
 
-     mov       dword [PageDirectory + 0x3FF * 4], PageDirectory or 0x019
+     mov       dword [PageDirectory + 0x3FF * 4], PageDirectory or 0x019 
      mov       dword [PageDirectory + 0x3F8 * 4], P3 or 0x019
      mov       dword [PageDirectory + 0x200 * 4], P2 or 0x001
 
@@ -494,7 +513,12 @@ proc Paging.Init
      mov       cr0, eax
 
      add       dword[ebp + 4], Options.Kernel.HierHalf 
-
+     xor       eax, eax
+.UpDate:
+     invlpg    [eax]
+     add       eax, 4096
+     cmp       eax, 1024 * 1024 
+     jb        .UpDate
      pop       ebx eax ecx edi ebp
      ret
 endp
@@ -508,11 +532,9 @@ ProtectedEntry:
      mov       ss, ax
      mov       esp, Options.Kernel.Base
 
-     mov       ax, CPL0_PROCDATA 
-     mov       fs, ax
-     mov       gs, ax
-     call      Paging.Init
 
+     
+     call      Paging.Init
 org Options.Kernel.HierHalf + $
      
      
@@ -531,7 +553,9 @@ org Options.Kernel.HierHalf + $
      mov       es, ax
      mov       ss, ax
      add       esp, Options.Kernel.HierHalf 
-
+     mov       ax, CPL0_PROCDATA 
+     mov       fs, ax
+     mov       gs, ax
 
      mov dword [0xfffff000], 0x00000002
      
@@ -541,129 +565,140 @@ org Options.Kernel.HierHalf + $
 
 
      call      TSS.Init
+     
+     
      stdcall   FramePool.Init1
 
-     stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE
-     stdcall   VGA.PutString, Str.A 
      
      ;Инициализация страници под procdata for this processor
-     stdcall   FramePool.GetFreePage 
+     stdcall   FramePool.GetFreePage
+     push      eax
+     mov     edi, $f00B8008
+     shr     eax, 16
+     xchg    eax, ebx     
+     mov     cx, 4
+@@:
+    rol     bx, 4
+    mov     ax, bx
+    and     al, 0000'0000_0000'1111b
+
+    cmp     al, $0A
+    sbb     al, $69
+    das
+    mov     ah, $07
+    
+    stosw
+    loop    @B
+
+     pop       eax 
      stdcall   Pager.MapPage, 0xFF000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
-     stdcall   VGA.PutString, Str.A 
-
      ;Инициализация страниц под первые 12 потоков
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFE000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
-     stdcall   VGA.PutString, Str.A 
-
+     
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFE001, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
-     stdcall   VGA.PutString, Str.A 
-
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFE002, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
-     stdcall   VGA.PutString, Str.A 
 
      ;Страница для первых N процессов
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFF102, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
-     stdcall   VGA.PutString, Str.A 
-
      ;тут вместо регистра надо адрес таблицы и IDT и GDT
      
      stdcall   Pager.MapPage, 0xFF100, Real.GDT shr 12,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      ;Переназначение таблицы
      
-     stdcall   VGA.PutString, Str.A 
 
      ; E820 memory map
      stdcall   Pager.MapPage, 0xFF101, 0x2, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
 
-     stdcall   VGA.PutString, Str.A 
-
      ; page fault handler table
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFF120, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+
+    
      
-     stdcall   VGA.PutString, Str.A 
 
      stdcall   GS.Init
-     
-     stdcall   IntHeand.Init
-     stdcall   XInt.Init
-     stdcall   HardwInt.Init       
-     stdcall   KernPageFault.Init  
 
-     stdcall   VGA.PutString, Str.A 
+     stdcall   GS.Base 
+    
+    ; stdcall   IntHeand.Init
+    ; stdcall   XInt.Init
      
-     stdcall   KernelMemManager.Init   
+    ; stdcall   HardwInt.Init       
+   ;  stdcall   KernPageFault.Init  
+
+      
+     ;stdcall   KernelMemManager.Init   
          
-     stdcall   VGA.PutString, Str.A 
+  ;   PRINT_STOP
 
-     stdcall   ProcessManager.Init     
-     stdcall   Sched.Init               
+     ;stdcall   ProcessManager.Init     
+     ;stdcall   Sched.Init               
      
-     stdcall   VGA.PutString, Str.A 
-
-     stdcall   FramePool.Init2
      
-     stdcall   VGA.PutString, Str.A 
-    
-     stdcall   Timer.TimerInit, TIMER_HZ
-
+     ;stdcall   FramePool.Init2
+     
+  ;   PRINT_STOP
+     
+     ;stdcall   Timer.TimerInit, TIMER_HZ
+     
  
-     STOP_POINT
+ ;    STOP_POINT
+    
 
-     stdcall   DMA.Init
+     ;stdcall   DMA.Init
      
     
      
      
-     stdcall   Process.Create
-     stdcall   Threads.Create, eax, PrintThread
-     sti
-     int       30h
+     ;stdcall   Process.Create
+     ;stdcall   Threads.Create, eax, PrintThread
+     ;sti
+     ;int       30h
      jmp       $
 
-proc PrintThread
+;proc PrintThread
 
      
-     stdcall   Floppy.Init
+     ;stdcall   Floppy.Init
      ;stdcall   Floppy.DetectDrives
 
      ; Чтение загрузочного сектора
-     stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0x7C00 shr 12, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     ;stdcall   FramePool.GetFreePage 
+     ;stdcall   Pager.MapPage, 0x7C00 shr 12, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
       
-     stdcall  Floppy.Read, 0, 0, 1, 0x7C00
+     ;stdcall  Floppy.Read, 0, 0, 1, 0x7C00
 
-     stdcall  VGA.PutString, 0x7C00
+     ;stdcall  VGA.PutString, 0x7C00
      ; Асинхронное чтение нескольких секторов
      ;stdcall Floppy.ReadAsync, 0, 1, 4, buffer_address, callback_function
 
      ; Проверка статуса
-     stdcall Floppy.GetStatus
-     STOP_POINT
+     ;stdcall Floppy.GetStatus
+     ;STOP_POINT
      ;stdcall FAT16.Init
      ;stdcall FAT16.Mount, 0
-.InfLoop:
-     stdcall   VGA.PrintDec, [Timer.TimerMs]
-     stdcall   VGA.PutString, Str.Goida
+;.InfLoop:
+     ;stdcall   VGA.PrintDec, [Timer.TimerMs]
+     ;stdcall   VGA.PutString, Str.Goida
      ;stdcall   VGA.SetColor, dword[Color2], dword[Color1]
-     inc       [Color1]
-     and       [Color1], 00000111b
-     inc       [Color2]
-     and       [Color2], 00000111b
-     stdcall   Timer.Sleep, 1000 
+     ;inc       [Color1]
+     ;and       [Color1], 00000111b
+     ;inc       [Color2]
+     ;and       [Color2], 00000111b
+     ;stdcall   Timer.Sleep, 1000 
      ;int       30h
-     jmp       .InfLoop
-endp
+     ;jmp       .InfLoop
+;endp
 
 
 proc HexPrint

@@ -43,10 +43,6 @@ block(.consts){
 
 block(.text){
 proc VGA.Init
-    ; Map VGA memory if not already mapped
-    ; In your system, this is likely already mapped in Paging.Init
-    ; If not, uncomment:
-    ; stdcall Pager.MapPage, VGA_TEXT_MEM shr 12, VGA_TEXT_MEM shr 12, AL_FL_WRITABLE or AL_FL_GLOBAL
     
     ; Initialize hardware
     stdcall VGA.SetMode3
@@ -287,22 +283,7 @@ proc VGA.UpdateCursor
     mul dx
     add ax, [VGA.CursorX]
     
-    ; Low byte
-    mov dx, VGA_CRTC_INDEX
-    mov al, 0x0F
-    out dx, al
-    inc dx
-    mov al, ah
-    out dx, al
-    
-    ; High byte
-    dec dx
-    mov al, 0x0E
-    out dx, al
-    inc dx
-    mov al, ah
-    shr al, 8
-    out dx, al
+   
     
     pop edx
     pop eax
@@ -350,7 +331,6 @@ endp
 proc VGA.PutChar char:BYTE
     push ebx ecx edx edi
 
-    ; Handle control characters
     cmp byte [char], 0x0A    ; Line feed
     je .line_feed
     cmp byte [char], 0x0D    ; Carriage return
@@ -362,7 +342,6 @@ proc VGA.PutChar char:BYTE
     cmp byte [char], 0x07    ; Bell
     je .bell
     
-    ; Regular character - calculate position
     movzx eax, word [VGA.CursorY]
     mov ecx, VGA_WIDTH
     mul ecx
@@ -370,7 +349,6 @@ proc VGA.PutChar char:BYTE
     add eax, ecx
     shl eax, 1            ; *2 for char+attr
     
-    ; Calculate attribute
     mov dl, [VGA.ColorBg]
     shl dl, 4
     or dl, [VGA.ColorFg]
@@ -383,7 +361,6 @@ proc VGA.PutChar char:BYTE
     or dl, 0x08
 .no_bold2:
     
-    ; Write character and attribute
     mov edi, VGA_TEXT_MEM
     add edi, eax
     mov al, [char]
@@ -391,7 +368,6 @@ proc VGA.PutChar char:BYTE
     inc edi
     mov [edi], dl
     
-    ; Advance cursor
     inc word [VGA.CursorX]
     cmp word [VGA.CursorX], VGA_WIDTH
     jb .update_cursor
