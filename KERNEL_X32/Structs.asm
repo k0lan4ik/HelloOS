@@ -72,9 +72,9 @@ TSSend:
 ;end virtual
 PageDirectory = 0x80000
      
-PageTable1 = PageDirectory +  4096 * 4
-P2 =  PageTable1 + 4096 * 4  
-P3 = P2 + 4096 * 4
+PageTable1 = PageDirectory +  4096
+P2 =  PageTable1 + 4096
+P3 = P2 + 4096
      
 }
 

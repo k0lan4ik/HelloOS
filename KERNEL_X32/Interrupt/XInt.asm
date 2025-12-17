@@ -9,7 +9,6 @@ proc XInt.Init
      
      add       eax, GS.XhTable
      mov       [XInt.ExceptHandler], eax
-     PRINT_STOP
      mov       ecx, 32
 @@:
      mov       dword[ecx * 4 + eax-4], XInt.Empty
@@ -266,11 +265,11 @@ XInt.Nmi:
 
     pushf
     pusha 
-    push ds es fs gs ss ax
+    pushw ds es fs gs ss ax
 
     call  XInt.DoNmi
 
-    pop ax ss gs fs es ds
+    popw ax ss gs fs es ds
     popa
     popf
     add esp, 4

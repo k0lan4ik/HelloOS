@@ -15,7 +15,7 @@ block(.consts){
     VGA_DAC_DATA    equ 0x3C9
     
     ; VGA memory
-    VGA_TEXT_MEM    equ 0xB8000 or Options.Kernel.HierHalf
+    VGA_TEXT_MEM    equ 0xB8000 + Options.Kernel.HierHalf
     VGA_WIDTH       equ 80
     VGA_HEIGHT      equ 25
     VGA_TOTAL_CELLS equ VGA_WIDTH * VGA_HEIGHT
@@ -45,7 +45,7 @@ block(.text){
 proc VGA.Init
     
     ; Initialize hardware
-    stdcall VGA.SetMode3
+    ;stdcall VGA.SetMode3
     
     ; Initialize cursor position
     mov word [VGA.CursorX], 0
@@ -59,10 +59,10 @@ proc VGA.Init
     mov byte [VGA.IsEnabled], 1
     
     ; Enable cursor
-    stdcall VGA.EnableCursor
+    ;stdcall VGA.EnableCursor
     
     ; Clear screen
-    stdcall VGA.ClearScreen
+    ;stdcall VGA.ClearScreen
     
     ret
 endp
@@ -371,12 +371,13 @@ proc VGA.PutChar char:BYTE
     inc word [VGA.CursorX]
     cmp word [VGA.CursorX], VGA_WIDTH
     jb .update_cursor
-    jmp .line_feed
+    jmp @F
     
 .update_cursor:
     stdcall VGA.UpdateCursor
     jmp .done
-    
+@@:
+    mov word [VGA.CursorX], 0
 .line_feed:
     inc word [VGA.CursorY]
     jmp .check_scroll

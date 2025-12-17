@@ -7,12 +7,16 @@ virtual at E820.Entry
      E820.Entry.Type     dd ?
      E820.Entry.Pad      dd ?
 end virtual
+
+FramePool.Start  = 0x1000
+FramePool.StartCount  = 2047
+
 }
 
 block(.text){
 proc FramePool.Init1 
-     mov       ecx, 2047
-     mov       eax, 0x1000
+     mov       ecx, FramePool.StartCount
+     mov       eax, FramePool.Start
      mov       edi, FramePool.ZeroTable 
 @@:
      stosd
@@ -21,7 +25,7 @@ proc FramePool.Init1
      xor       ax, ax
      
      mov       [FramePool.ZeroRead], ax
-     mov       [FramePool.ZeroWrite], 2047
+     mov       [FramePool.ZeroWrite], FramePool.StartCount
 
      mov       [FramePool.FreeRead], ax
      mov       [FramePool.FreeWrite], ax

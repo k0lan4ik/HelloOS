@@ -8,7 +8,7 @@ end virtual
 
 block(.text){
 proc KernelMemManager.Init uses ebx
-     add       [Kernel.MaxMem], 16
+     ;add       [Kernel.MaxMem], 16
      mov       ebx, [Kernel.MaxMem]
      add       ebx, 4095
      shr       ebx, 12
@@ -226,7 +226,7 @@ proc KernelMemManager.RFree uses ebx edi esi, what
 
      mov       eax, [ebx + ecx - MemBlock.StrucSize + MemBlock.Size]
      mov       [ebx + edx + MemBlock.Size], eax
-     sub       ecx, MemBlock.StrucSize      
+     ;sub       ecx, MemBlock.StrucSize      
 @@:
      
      lea       eax, [esi + edi]
@@ -240,9 +240,9 @@ proc KernelMemManager.RFree uses ebx edi esi, what
 
      mov       eax, [ebx + ecx - MemBlock.StrucSize + MemBlock.Size]
      mov       [ebx + edx + MemBlock.Size], eax
-     sub       ecx, MemBlock.StrucSize 
+      
 @@:
-
+     sub       ecx, MemBlock.StrucSize
      jmp       .Seek
 
 .EndSeek:

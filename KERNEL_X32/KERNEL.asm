@@ -22,7 +22,7 @@ macro IDE.Write Value*
   display 13,10
 }
 
-define DEBUG
+;define DEBUG
 macro STOP_POINT {
      match =DEBUG, DEBUG 
      \{
@@ -482,13 +482,26 @@ proc Paging.Init
      mov       ecx, 1024
      mov       eax, 0x00000002 ; Supervisor, R/W, Not Present
      rep stosd
+     
+     mov       edi, FramePool.Start shl 12
+     mov       ecx, FramePool.StartCount * 1024
+     xor       eax, eax
+     rep       stosd
+
+     mov       edi, P2
+     mov       ecx, 1024
+     rep       stosd
+
+     mov       edi, P3
+     mov       ecx, 1024
+     rep       stosd
 
      mov       dword [PageDirectory + 0x3FF * 4], PageDirectory or 0x019 
      mov       dword [PageDirectory + 0x3F8 * 4], P3 or 0x019
      mov       dword [PageDirectory + 0x200 * 4], P2 or 0x001
 
      mov       edi, PageTable1
-     mov       ecx, 1024
+     mov       ecx, 256
      xor       ebx, ebx
 
 .MapFirst4MB:
@@ -562,8 +575,6 @@ org Options.Kernel.HierHalf + $
 
      call      IRQ.Init
      
-
-
      call      TSS.Init
      
      
@@ -572,27 +583,7 @@ org Options.Kernel.HierHalf + $
      
      ;Инициализация страници под procdata for this processor
      stdcall   FramePool.GetFreePage
-     push      eax
-     mov     edi, $f00B8008
-     shr     eax, 16
-     xchg    eax, ebx     
-     mov     cx, 4
-@@:
-    rol     bx, 4
-    mov     ax, bx
-    and     al, 0000'0000_0000'1111b
-
-    cmp     al, $0A
-    sbb     al, $69
-    das
-    mov     ah, $07
-    
-    stosw
-    loop    @B
-
-     pop       eax 
      stdcall   Pager.MapPage, 0xFF000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
-     
      ;Инициализация страниц под первые 12 потоков
      stdcall   FramePool.GetFreePage 
      stdcall   Pager.MapPage, 0xFE000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
@@ -626,83 +617,93 @@ org Options.Kernel.HierHalf + $
     
      
 
-     stdcall   GS.Init
-
-     stdcall   GS.Base 
+     stdcall   GS.Init 
     
-    ; stdcall   IntHeand.Init
-    ; stdcall   XInt.Init
+     stdcall   IntHeand.Init
+     stdcall   XInt.Init
      
-    ; stdcall   HardwInt.Init       
-   ;  stdcall   KernPageFault.Init  
+     stdcall   HardwInt.Init       
+     stdcall   KernPageFault.Init  
 
-      
-     ;stdcall   KernelMemManager.Init   
+     stdcall   KernelMemManager.Init   
          
-  ;   PRINT_STOP
+  
+     stdcall   VGA.Init
+     stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE     
+     mov  edi, 0xf00b8000 + 80 * 20 * 2
+     mov  ebx, dword[VGA.CursorX]
+     call HexPrint
+     mov  edi, 0xf00b8000 + 80 * 21 * 2
+     mov  ebx, dword[VGA.ColorFg]
+     call HexPrint
+     stdcall   VGA.PutString, Str.Goida 
 
-     ;stdcall   ProcessManager.Init     
-     ;stdcall   Sched.Init               
+     
+     stdcall   ProcessManager.Init     
+     stdcall   Sched.Init               
      
      
-     ;stdcall   FramePool.Init2
+     stdcall   FramePool.Init2
      
   ;   PRINT_STOP
      
-     ;stdcall   Timer.TimerInit, TIMER_HZ
+     stdcall   Timer.TimerInit, TIMER_HZ
      
  
  ;    STOP_POINT
-    
+     
 
-     ;stdcall   DMA.Init
+
+
+     stdcall   DMA.Init
      
     
      
-     
-     ;stdcall   Process.Create
-     ;stdcall   Threads.Create, eax, PrintThread
-     ;sti
-     ;int       30h
+     stdcall   Process.Create
+     stdcall   Threads.Create, eax, PrintThread
+     sti
+     int       30h
      jmp       $
 
-;proc PrintThread
+proc PrintThread
 
      
-     ;stdcall   Floppy.Init
-     ;stdcall   Floppy.DetectDrives
+     stdcall   Floppy.Init
+     stdcall   Floppy.DetectDrives
 
      ; Чтение загрузочного сектора
-     ;stdcall   FramePool.GetFreePage 
-     ;stdcall   Pager.MapPage, 0x7C00 shr 12, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     stdcall   FramePool.GetFreePage 
+     stdcall   Pager.MapPage, 0x7C00 shr 12, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
       
-     ;stdcall  Floppy.Read, 0, 0, 1, 0x7C00
+     stdcall  Floppy.Read, 0, 0, 1, 0x7C00
 
-     ;stdcall  VGA.PutString, 0x7C00
+     stdcall  VGA.PutString, 0x7C00
      ; Асинхронное чтение нескольких секторов
      ;stdcall Floppy.ReadAsync, 0, 1, 4, buffer_address, callback_function
 
      ; Проверка статуса
-     ;stdcall Floppy.GetStatus
+     stdcall Floppy.GetStatus
      ;STOP_POINT
-     ;stdcall FAT16.Init
-     ;stdcall FAT16.Mount, 0
-;.InfLoop:
-     ;stdcall   VGA.PrintDec, [Timer.TimerMs]
-     ;stdcall   VGA.PutString, Str.Goida
-     ;stdcall   VGA.SetColor, dword[Color2], dword[Color1]
-     ;inc       [Color1]
-     ;and       [Color1], 00000111b
-     ;inc       [Color2]
-     ;and       [Color2], 00000111b
-     ;stdcall   Timer.Sleep, 1000 
-     ;int       30h
-     ;jmp       .InfLoop
-;endp
+     stdcall FAT16.Init
+     stdcall FAT16.Mount, 0
+     stdcall   VGA.PrintDec, eax
+     stdcall   VGA.PutString, Str.Goida
+.InfLoop:
+     stdcall   VGA.PrintDec, [Timer.TimerMs]
+     stdcall   VGA.PutString, Str.Goida
+     stdcall   VGA.SetColor, dword[Color2], dword[Color1]
+     inc       [Color1]
+     and       [Color1], 00000111b
+     inc       [Color2]
+     and       [Color2], 00000111b
+     stdcall   Timer.Sleep, 1000 
+     int       30h
+     jmp       .InfLoop
+endp
 
 
 proc HexPrint
-    pusha
+    push    ebx ecx edx eax
     mov     ecx, 8
 @@:
     rol     ebx, 4
@@ -713,11 +714,11 @@ proc HexPrint
     sbb     al, $69
     das
   
-    mov     ah, $0E
-    call    ScreenMode03.PrintSymbol
+    mov     ah, $07
+    stosw
 
     loop    @B
-    popa
+    pop    eax edx ecx ebx
     ret
 endp
 
@@ -801,7 +802,7 @@ endp
 }
 
 block(.initData){
-Kernel.MaxMem dd Kernel.EndMem 
+Kernel.MaxMem dd 0xf0100000;Kernel.EndMem 
 Color1    db VGA_COLOR_BLACK
 Color2    db VGA_COLOR_BLUE
 Str.Goida db "Hello OS x32 <3", 13, 0

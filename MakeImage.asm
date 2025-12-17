@@ -136,7 +136,7 @@ DriveNumber           db 00h
 Reserved              db 0
 BootSignature         db 29h
 VolumeID              dd 12345678h
-VolumeLabel           db 'NO NAME    '
+VolumeLabel           db 'NO_NAME    '
 FileSystemType        db 'FAT16   '
 
 BootAdr = 0x600

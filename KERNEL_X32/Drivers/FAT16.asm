@@ -320,15 +320,17 @@ proc FAT16.Mount uses ebx esi edi, drive: BYTE
     add     eax, ebx
     mov     [edi + FAT16.DataStart], eax
     
+    STOP_POINT
     mov     ebx, [edi + FAT16.TotalSectors]
     sub     ebx, eax        ; Subtract data start from total
     movzx   eax, byte [edi + FAT16.SectorsPerCluster]
+    xchg    ebx, eax
     xor     edx, edx
-    div     eax             ; Divide by sectors per cluster
+    div     ebx             ; Divide by sectors per cluster
     mov     [edi + FAT16.TotalClusters], eax
     
     cmp     eax, 4085
-    jb      .FAT12
+    ;jb      .FAT12
     cmp     eax, 65525
     jb      .FAT16
     mov     byte [edi + FAT16.FATType], 2  ; FAT32
@@ -342,7 +344,7 @@ proc FAT16.Mount uses ebx esi edi, drive: BYTE
     
     cmp     byte [edi + FAT16.FATType], 1
     je      .IsFAT16
-    
+    STOP_POINT
     stdcall KernelMemManager.Free, [bootSector]
     mov     eax, FR_NO_FILESYSTEM
     jmp     .EndProc
@@ -388,6 +390,8 @@ proc FAT16.Mount uses ebx esi edi, drive: BYTE
 .EndProc:    
     ret
 endp
+
+
 }
 
 block(.data){
