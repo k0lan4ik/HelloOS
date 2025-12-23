@@ -111,7 +111,9 @@ macro build_data_area
   end repeat
 }
 
-add_file 'KERNEL  SYS', 'KERNEL_X32/KERNEL.sys'
+;add_file 'KERNEL  SYS', 'KERNEL_X32/KERNEL.sys'
+add_file 'KERNEL  SYS', 'KERNEL/KERNEL.sys'
+
 
 org 7C00h
 BootLoader:

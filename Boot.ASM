@@ -1,3 +1,25 @@
+
+macro IDE.Write Value*
+{
+  local value, ofs, digit
+  value = Value
+  ofs = 15
+  repeat 16
+    digit = (value shr (ofs * 4)) and $F
+    if digit > 9
+      display digit + 'A' - 10
+    else
+      display digit + '0'
+    end if
+    if % = 8
+      display ''''
+    end if
+    ofs = ofs - 1
+  end repeat
+  display 13,10
+}
+
+
 format binary as 'bin'
                 org 7C00h
                 jmp     boot_loader
@@ -22,7 +44,7 @@ BS_BootSig      db  $29        ;Signature (must be 28h or 29h to be recognised b
 BS_VolID        dd  $0A171AE7  ;The serial number, the serial number is stored in reverse order and is the hex representation of the bytes stored here
 BS_VolLab       db  'NO NAME    ';Volume label.
 BS_FilSysType   db  'FAT16   '   ;File system ID. "FAT12", "FAT16" or "FAT  ".
-
+IDE.Write $
 boot_loader:
 root_dir_ofs:
         xor ax, ax
@@ -86,7 +108,7 @@ culinder:
 
         call    lba_to_chs
 
-        mov     al, 1
+        ;mov     al, 1
         call    read_sectors
         jc      ErrorDisk
         inc     cx
@@ -101,7 +123,7 @@ culinder:
 @@:
         pusha
         call    lba_to_chs
-        mov     al, 1
+        ;mov     al, 1
         call    read_sectors
         popa
         jc      ErrorDisk
@@ -157,7 +179,7 @@ Continue:
         mul     cx
         add     ax, word[data_claster_ofs]
         adc     dx, word[data_claster_ofs + 2]
-        ;читаем
+        ;пїЅпїЅпїЅпїЅпїЅпїЅ
         movzx   cx, [BPB_SecPerClus]
 .ReadLoop:
         push    ax
@@ -166,7 +188,7 @@ Continue:
         call    lba_to_chs
 
         mov     bx, di
-        mov     al, 1
+        
 
         call    read_sectors
         jc      ErrorDisk
@@ -216,6 +238,7 @@ read_sectors:
         xchg    cl, ch
         mov     dl, [BS_DrvNum]
         mov     dh, [heads]
+        mov     al, 1
         int     13h
         jc      .ReadTry
 .Exit:

@@ -20,7 +20,7 @@ macro DEBUGPRINT From*
   \}
 }
 
-Options.Kernel.SDZSegment        equ     $0060
+Options.Kernel.SDZSegment        equ     $0070
 
 EntryPoint:
 
