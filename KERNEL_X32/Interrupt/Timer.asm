@@ -99,7 +99,8 @@ proc Timer.Handle uses esi edi ebx
     
      cmp       [Timer.Timers], 0
      jz        .ProcData
-     
+     stdcall   Mutex.TryWait, Timer.Mutex
+     jnz       .ProcData
      mov       edi, [Timer.Timers]
      xor       edx, edx
 .ProcessTimerList: 
@@ -129,14 +130,19 @@ proc Timer.Handle uses esi edi ebx
      mov edx, edi
      mov edi, [edi + Timer.TimerEnt.Next]
      jmp .ProcessTimerList
-    
+     
 .EndTimerList:
-
+     stdcall   Mutex.Release, Timer.Mutex
+     
 .ProcData:
      stdcall   GS.Base
+     cmp       [eax + GS.Quantum], 0
+     jnz       @F
+     STOP_POINT
+@@:     
      dec       [eax + GS.Quantum]
      cmp       [eax + GS.Quantum], 0
-     jnz       .EndProc
+     ;jnz       .EndProc
      int       30h
 .EndProc:
      ret

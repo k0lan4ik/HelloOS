@@ -131,6 +131,8 @@ proc Sched.HandlerInt
 
      movzx     eax, [ebx + Thread.Next]
      
+     test      eax, eax
+
      mov       [edi + ecx * 2 - 2], ax
      imul      eax, eax, ThreadSize
      add       eax, [Threads.Threads]
@@ -144,6 +146,7 @@ proc Sched.HandlerInt
 .SkipFound:
      pop       ebx
      loop      .LoopFountThread
+     STOP_POINT
      movzx     ebx, [Sched.Idle]
      push      ebx
 .EndFountThread:
@@ -417,6 +420,8 @@ block(.initData){
 block(.data){
      
      Sched.Maxthr   dw ?
+         IDE.Write $
+
      Sched.P        dw 4 dup ?
      Sched.End      dw 4 dup ?
 }

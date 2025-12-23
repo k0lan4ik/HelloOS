@@ -350,7 +350,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
         Count       db ?
         BufferIndex dw ?
     endl
-    STOP_POINT
+    ;STOP_POINT
     cmp     [count], 0
     je      .Invalid
     cmp     [count], 18
@@ -387,7 +387,7 @@ proc Floppy.Read uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer:
     jz      .ReadError
     
 
-    STOP_POINT
+    ;STOP_POINT
     stdcall Floppy.AddToCache, dword[Drive], dword[Head], dword[Track], dword[Sector], dword[BufferIndex]
     
     stdcall Floppy.CopyFromBuffer, dword[BufferIndex], dword[buffer], dword[count]
@@ -689,7 +689,7 @@ proc Floppy.MotorOn uses ebx, drive:BYTE
 
     mov     byte [ebx + FloppyDrive.MotorState], 2
     
-    ;stdcall Timer.Sleep, MOTOR_DELAY_MS
+    stdcall Timer.Sleep, MOTOR_DELAY_MS
     
     mov byte [ebx + FloppyDrive.MotorState], 1
     
@@ -1248,7 +1248,7 @@ proc Floppy.Write uses ebx esi edi, drive: BYTE, lba: DWORD, count: BYTE, buffer
     pop     eax
     
     ; Если буфер новый, помечаем как грязный
-    movzx   eax, eax
+    ;movzx   eax, eax
     imul    eax, eax, FloppyBufferSize
     add     eax, Floppy.Buffers
     mov     byte [eax + FloppyBuffer.State], 3  ; BUFFER_DIRTY

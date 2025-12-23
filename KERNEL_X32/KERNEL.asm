@@ -63,7 +63,7 @@ USER_DATA_SELECTOR    equ 0x28
 CPL0_PROCDATA         equ 0x30
 CPL0_THREAD           equ 0x38
 
-TIMER_HZ = 10000
+TIMER_HZ = 1000
 
 Options.Kernel.Base     equ     $0600
 Options.Kernel.HierHalf equ     $F0000000
@@ -566,9 +566,11 @@ org Options.Kernel.HierHalf + $
      mov       es, ax
      mov       ss, ax
      add       esp, Options.Kernel.HierHalf 
-     mov       ax, CPL0_PROCDATA 
+     mov       ax, CPL0_THREAD
      mov       fs, ax
+     mov       ax, CPL0_PROCDATA 
      mov       gs, ax
+     finit
 
      mov dword [0xfffff000], 0x00000002
      
@@ -667,7 +669,7 @@ org Options.Kernel.HierHalf + $
 
 proc PrintThread
 
-     
+     ;STOP_POINT
      stdcall   Floppy.Init
      stdcall   Floppy.DetectDrives
 
@@ -685,7 +687,9 @@ proc PrintThread
      stdcall Floppy.GetStatus
      ;STOP_POINT
      stdcall FAT16.Init
-     stdcall FAT16.Mount, 0
+     xchg bx, bx
+    
+     stdcall FAT16.Test
      stdcall   VGA.PrintDec, eax
      stdcall   VGA.PutString, Str.Goida
 .InfLoop:

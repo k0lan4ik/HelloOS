@@ -19,7 +19,15 @@ proc Mutex.Wait uses ebx, mutex
      test      al, al
      jz        @B
      ret
-endp    
+endp 
+
+proc Mutex.TryWait uses ebx, mutex
+     mov       ebx, [mutex]
+     xor       al, al
+@@:
+     lock xchg al, [ebx]
+     ret
+endp  
 
 proc Mutex.WaitLong uses ebx, mutex
 .Retry:

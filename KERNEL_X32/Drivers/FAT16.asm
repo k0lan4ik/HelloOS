@@ -391,6 +391,1159 @@ proc FAT16.Mount uses ebx esi edi, drive: BYTE
     ret
 endp
 
+proc FAT16.Unmount, drive: BYTE
+    movzx   eax, [drive]
+    cmp     al, [FAT16.FS + FAT16.Drive]
+    je      .DriveMatch
+    
+    mov     eax, FR_INVALID_DRIVE
+    ret
+    
+.DriveMatch:
+    
+    cmp     [FAT16.OpenFileCount], 0
+    je      .NoOpenFiles
+    
+    mov     eax, FR_LOCKED
+    ret
+    
+.NoOpenFiles:
+    movzx   eax, [drive]
+    stdcall FAT16.Sync, eax
+    
+    mov     byte [FAT16.FS + FAT16.Mounted], 0
+    
+    mov     eax, FR_OK
+    ret
+endp
+
+proc FAT16.Sync uses ebx, drive: BYTE
+    mov     ebx, FAT16.FS
+    
+    cmp     byte [ebx + FAT16.Mounted], 0
+    jne     .Mounted
+    
+    mov     eax, FR_NOT_ENABLED
+    ret
+    
+.Mounted:
+    cmp     byte [ebx + FAT16.FATCacheDirty], 0
+    je      .FATClean
+    
+    stdcall FAT16.WriteFATSector, [ebx + FAT16.FATCacheSector]
+    
+    cmp     eax, FR_OK
+    jne     .Error
+    
+    mov     byte [ebx + FAT16.FATCacheDirty], 0
+    
+.FATClean:
+    cmp     byte [ebx + FAT16.CacheDirty], 0
+    je      .DataClean
+    
+    stdcall FAT16.WriteSector, [ebx + FAT16.CacheSector]
+    cmp     eax, FR_OK
+    jne     .Error
+    
+    mov     byte [ebx + FAT16.CacheDirty], 0
+    
+.DataClean:
+    mov     eax, FR_OK
+    ret
+    
+.Error:
+    mov     eax, FR_DISK_ERR
+    ret
+endp
+
+
+proc FAT16.ReadSector uses ebx esi edi, sector: DWORD
+    mov     ebx, FAT16.FS
+    
+    mov     eax, [sector]
+    cmp     eax, [ebx + FAT16.CacheSector]
+    je      .Cached
+    
+    cmp     byte [ebx + FAT16.CacheDirty], 0
+    je      .NotDirty
+    
+    stdcall FAT16.WriteSector, [ebx + FAT16.CacheSector]
+    cmp     eax, FR_OK
+    jne     .Error
+    
+.NotDirty:
+    movzx   ecx, byte [ebx + FAT16.Drive]
+    mov     edx, [sector]
+    mov     esi, [ebx + FAT16.CacheBuffer]
+    
+    stdcall Floppy.Read, ecx, edx, 1, esi
+    test    eax, eax
+    jnz     .ReadOK
+    
+.Error:
+    mov     eax, FR_DISK_ERR
+    ret
+    
+.ReadOK:
+    mov     eax, [sector]
+    mov     [ebx + FAT16.CacheSector], eax
+    mov     byte [ebx + FAT16.CacheDirty], 0
+    
+.Cached:
+    mov     eax, FR_OK
+    ret
+endp
+
+
+proc FAT16.WriteSector uses ebx esi, sector: DWORD
+    mov     ebx, FAT16.FS
+    
+    cmp     byte [ebx + FAT16.WriteProtected], 0
+    je      .NotProtected
+    
+    mov     eax, FR_WRITE_PROTECTED
+    ret
+    
+.NotProtected:
+    movzx   ecx, byte [ebx + FAT16.Drive]
+    mov     edx, [sector]
+    mov     esi, [ebx + FAT16.CacheBuffer]
+    
+    stdcall Floppy.Write, ecx, edx, 1, esi
+    
+    mov     byte [ebx + FAT16.CacheDirty], 0
+    
+    mov     eax, FR_OK
+    ret
+endp
+
+proc FAT16.ReadFATSector uses ebx esi edi, sector: DWORD
+    mov     ebx, FAT16.FS
+    
+    mov     eax, [sector]
+    cmp     eax, [ebx + FAT16.FATCacheSector]
+    je      .Cached
+    
+    add     eax, [ebx + FAT16.FATStart]
+    
+    movzx   ecx, byte [ebx + FAT16.Drive] 
+    
+    stdcall Floppy.Read, ecx, eax, 1, [ebx + FAT16.FATCacheBuffer]
+    test    eax, eax
+    jnz     .ReadOK
+    
+    mov     eax, FR_DISK_ERR
+    ret
+    
+.ReadOK:
+    mov     eax, [sector]
+    mov     [ebx + FAT16.FATCacheSector], eax
+    mov     byte [ebx + FAT16.FATCacheDirty], 0
+    
+.Cached:
+    mov     eax, FR_OK
+    ret
+endp
+
+proc FAT16.WriteFATSector uses ebx esi, sector: DWORD
+    mov     ebx, FAT16.FS
+    
+    cmp     byte [ebx + FAT16.WriteProtected], 0
+    je      .NotProtected
+    
+    mov     eax, FR_WRITE_PROTECTED
+    ret
+    
+.NotProtected:
+    mov     eax, [sector]
+    add     eax, [ebx + FAT16.FATStart]
+    
+    movzx   ecx, byte [ebx + FAT16.Drive]
+    mov     esi, [ebx + FAT16.FATCacheBuffer]
+    
+    push    ecx
+    stdcall Floppy.Write, ecx, eax, 1, esi
+    pop     ecx
+
+    cmp     byte [ebx + FAT16.NumberOfFATs], 1
+    jbe     .SingleFAT
+    
+    mov     eax, [sector]
+    add     eax, [ebx + FAT16.FATStart]
+    movzx   edx, [ebx + FAT16.SectorsPerFAT]
+    add     eax, edx
+    
+    stdcall Floppy.Write, ecx, eax, 1, esi
+    
+.SingleFAT:
+    mov     byte [ebx + FAT16.FATCacheDirty], 0
+    mov     eax, FR_OK
+    ret
+endp
+
+proc FAT16.GetFAT uses ebx esi, cluster: WORD
+    mov     ebx, FAT16.FS
+
+    
+    movzx   edx, [cluster]
+    shr     edx, 8          
+    
+    stdcall FAT16.ReadFATSector, edx
+    cmp     eax, FR_OK
+    jne     .Error
+    
+    movzx   edx, [cluster]
+    shl     edx, 1          
+    and     edx, 0x1FF     
+    
+    mov     esi, [ebx + FAT16.FATCacheBuffer]
+    add     esi, edx
+    mov     ax, [esi]
+    
+    
+    ;xchg    al, ah
+    ret
+    
+.Error:
+    mov ax, 0xFFFF
+    ret
+endp
+
+proc FAT16.SetFAT uses ebx esi edi, cluster: WORD, value: WORD
+    mov     ebx, FAT16.FS
+     
+    movzx   edx, [cluster]
+    shr     edx, 8
+    
+    stdcall FAT16.ReadFATSector, edx
+    cmp     eax, FR_OK
+    jne     .Error
+    
+    movzx   edx, [cluster]
+    shl     edx, 1          
+    and     edx, 0x1FF      
+    
+    mov     esi, [ebx + FAT16.FATCacheBuffer]
+    add     esi, edx
+    mov     ax, [value]
+    ;xchg al, ah
+    mov     [esi], ax
+    
+    ; Mark FAT cache as dirty
+    mov     byte [ebx + FAT16.FATCacheDirty], 1
+    
+    mov     eax, FR_OK
+    ret
+    
+.Error:
+    mov     eax, FR_DISK_ERR
+    ret
+endp
+
+proc FAT16.FindFreeCluster uses ebx esi edi
+    mov     ebx, FAT16.FS
+    
+    mov     esi, [ebx + FAT16.LastAllocCluster]
+    cmp     esi, 2
+    jae     .StartOK
+    mov     esi, 2
+.StartOK:
+    
+    mov     edi, [ebx + FAT16.TotalClusters]
+    add     edi, 2
+    
+.SearchLoop:
+    stdcall FAT16.GetFAT, si
+    cmp     ax, FAT16_FREE_CLUSTER
+    je      .Found
+    
+    inc     si
+    cmp     esi, edx
+    jb      .NotWrap
+    
+    mov     esi, 2
+    
+.NotWrap:
+    cmp     esi, [ebx + FAT16.LastAllocCluster]
+    jne     .SearchLoop
+    
+    mov     eax, FR_DENIED
+    mov     edx, 0
+    ret
+    
+.Found:
+    mov     [ebx + FAT16.LastAllocCluster], esi
+    
+    cmp     dword [ebx + FAT16.FreeClusters], 0xFFFFFFFF
+    je      .CountUnknown
+    dec     dword [ebx + FAT16.FreeClusters]
+    
+.CountUnknown:
+    mov     edx, esi
+    mov     eax, FR_OK
+    ret
+endp
+
+
+proc FAT16.ClusterToSector uses ebx, cluster: WORD
+    mov     ebx, FAT16.FS
+    movzx   eax, [cluster]
+    
+    sub     eax, 2
+    
+    movzx   ecx, byte [ebx + FAT16.SectorsPerCluster]
+    mul     ecx
+    
+    add     eax, [ebx + FAT16.DataStart]
+    
+    ret
+endp
+
+proc FAT16.Open uses ebx esi edi, filename: DWORD, mode: BYTE
+    locals
+        fs          dd ?
+        dirEntry    dd ?
+        fileObj     dd ?
+        result      dd ?
+        dirSector   dd ?    ; Добавлено: сектор директории
+        dirIndex    dw ?    ; Добавлено: индекс записи
+    endl
+    
+    stdcall Mutex.Wait, FAT16.FileMutex
+    
+    mov     eax, [FAT16.OpenFileCount]
+    cmp     eax, MAX_FILES
+    jb      .CanOpen
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    mov     eax, FR_TOO_MANY_OPEN_FILES
+    ret
+    
+.CanOpen:
+    mov     [fs], FAT16.FS
+    
+    ; Нужно модифицировать FAT16.FindFile, чтобы она возвращала также сектор и индекс
+    ; Пока используем временное решение - будем искать заново
+    ; Для правильной реализации нужно изменить FAT16.FindFile
+    stdcall FAT16.FindFile, [filename], 0
+    mov     [result], eax
+    mov     [dirEntry], edx
+    
+    ; ВРЕМЕННОЕ РЕШЕНИЕ: вычисляем сектор и индекс из кэша
+    mov     ebx, [fs]
+    mov     eax, [ebx + FAT16.CacheSector]
+    mov     [dirSector], eax
+    
+    ; Вычисляем индекс записи
+    mov     eax, edx                    ; указатель на запись
+    sub     eax, [ebx + FAT16.CacheBuffer] ; минус начало буфера
+    shr     eax, 5                      ; делим на 32 (размер записи)
+    mov     [dirIndex], ax
+    
+    cmp     eax, FR_OK
+    je      .FileFound
+    
+    test    byte [mode], FA_CREATE_NEW
+    jnz     .CreateNew
+    test    byte [mode], FA_CREATE_ALWAYS
+    jnz     .CreateAlways
+    test    byte [mode], FA_OPEN_ALWAYS
+    jnz     .CreateAlways
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    mov     eax, FR_NO_FILE
+    ret
+    
+.CreateNew:
+    cmp     [result], FR_OK
+    jne     .CreateFile
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    mov     eax, FR_EXIST
+    ret
+    
+.CreateAlways:
+.CreateFile:
+    stdcall FAT16.CreateFile, [filename]
+    cmp     eax, FR_OK
+    je      .FileCreated
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    ret
+    
+.FileCreated:
+    ; После создания файла нужно найти его снова
+    stdcall FAT16.FindFile, [filename], 0
+    mov     [result], eax
+    mov     [dirEntry], edx
+    cmp     eax, FR_OK
+    je      .FileFound
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    mov     eax, FR_DISK_ERR
+    ret
+    
+.FileFound:
+    stdcall KernelMemManager.Malloc, FileSize
+    mov     [fileObj], eax
+    test    eax, eax
+    jnz     .ObjOK
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    mov     eax, FR_NOT_ENOUGH_CORE
+    ret
+    
+.ObjOK:
+    mov     edi, eax                    ; edi = указатель на структуру File
+    
+    mov     eax, FileSize
+    stosd                               ; File.ObjSize
+    
+    mov     eax, [fs]
+    stosd                               ; File.FS
+    
+    mov     esi, [dirEntry]             ; указатель на запись в директории
+    
+    mov     ax, [esi + DIR_FST_CLUS_LO]
+    stosw                               ; File.Cluster
+    ;add     edi, 2                      ; пропускаем 2 байта выравнивания
+    
+    xor     eax, eax
+    stosd                               ; File.Sector
+    
+    stosd                               ; File.Pointer
+    
+    mov     eax, [esi + DIR_FILE_SIZE]
+    stosd                               ; File.Size
+    
+    mov     eax, [dirSector]
+    stosd                               ; File.DirSector
+    
+    mov     ax, [dirIndex]
+    stosw                               ; File.DirIndex
+    
+    xor     eax, eax
+    stosb                               ; File.Flags
+    
+    mov     al, [mode]
+    stosb                               ; File.Mode
+    
+    add     edi, 2
+    
+    mov     ecx, [FAT16.OpenFileCount]
+    mov     eax, [fileObj]
+    mov     [FAT16.OpenFiles + ecx * 4], eax
+    inc     [FAT16.OpenFileCount]
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    
+    mov     eax, FR_OK
+    mov     edx, [fileObj]
+    ret
+endp
+
+proc FAT16.Close uses ebx esi, fileObj: DWORD
+    mov     ebx, [fileObj]
+    test    ebx, ebx
+    jnz     .ValidObj
+    
+    mov     eax, FR_INVALID_OBJECT
+    ret
+    
+.ValidObj:
+    stdcall Mutex.Wait, FAT16.FileMutex
+    
+    ; Sync file if needed
+    ; (In a full implementation, we'd flush buffers here)
+    
+    mov     ecx, [FAT16.OpenFileCount]
+    mov     edx, FAT16.OpenFiles
+    
+.SearchLoop:
+    dec     ecx
+    js      .NotFound
+    mov     eax, [edx + ecx * 4]
+    cmp     eax, ebx
+    jne     .SearchLoop
+    
+    mov     esi, edx
+    lea     esi, [esi + ecx * 4]
+    lea     edi, [esi + 4]
+    neg     ecx
+    add     ecx, [FAT16.OpenFileCount]
+    ;sub     ecx, [edx + ecx * 4] 
+    rep movsd
+    
+    dec     [FAT16.OpenFileCount]
+    
+.NotFound:
+
+    stdcall KernelMemManager.Free, ebx
+    
+    stdcall Mutex.Release, FAT16.FileMutex
+    mov     eax, FR_OK
+    ret
+endp
+
+proc FAT16.Read uses ebx esi edi, fileObj: DWORD, buffer: DWORD, bytesToRead: DWORD, bytesRead: DWORD
+    locals
+        fs          dd ?
+        cluster     dw ?
+        sector      dd ?
+        offsetInSect dd ?
+        bytesLeft   dd ?
+        totalRead   dd ?
+    endl
+    
+    xchg    bx, bx
+    mov     ebx, [fileObj]
+    test    ebx, ebx
+    jnz     .ValidObj
+    
+    mov     eax, FR_INVALID_OBJECT
+    ret
+    
+.ValidObj:
+    test    byte [ebx + File.Mode], FA_READ
+    jnz     .CanRead
+    
+    mov     eax, FR_DENIED
+    ret
+    
+.CanRead:
+    mov     eax, [ebx + File.FS]
+    mov     [fs], eax
+    
+    mov     eax, [bytesToRead]
+    mov     [bytesLeft], eax
+    mov     dword [totalRead], 0
+    mov     esi, [buffer]
+    
+    mov     eax, [ebx + File.Pointer]
+    cmp     eax, [ebx + File.Size]
+    jb      .NotEOF
+    
+    mov     edi, [bytesRead]
+    mov     dword [edi], 0
+    mov     eax, FR_OK
+    ret
+    
+.NotEOF:
+.ReadLoop:
+    cmp     [bytesLeft], 0
+    jle     .Done
+    
+    mov     eax, [ebx + File.Pointer]
+
+    cmp     word [ebx + File.Cluster], 0
+    jne     .HasCluster
+    
+    jmp .Done
+    
+.HasCluster:
+    mov     eax, [fs]
+    movzx   ecx, byte [eax + FAT16.SectorsPerCluster]
+    push    eax
+    mov     eax, [ebx + File.Pointer]
+    xor     edx, edx
+    mov     ecx, 512
+    div     ecx                     ; Pointer / 512
+    mov     [sector], eax
+    mov     [offsetInSect], edx
+    pop     eax
+    
+    
+    mov     ax, [ebx + File.Cluster]
+    mov     [cluster], ax
+    
+    stdcall FAT16.ClusterToSector, eax
+    add     eax, [sector]
+    
+    push    ebx esi
+    mov     ebx, [fs]
+    xchg    bx, bx
+    stdcall FAT16.ReadSector, eax
+    pop     esi ebx
+    cmp     eax, FR_OK
+    jne     .Error
+    
+    mov     edi, [fs]
+    mov     eax, [edi + FAT16.CacheBuffer]
+    add     eax, [offsetInSect]
+    
+    mov     ecx, 512
+    sub     ecx, [offsetInSect]     
+    cmp     ecx, [bytesLeft]
+    jbe     .ReadAmountOK
+    mov     ecx, [bytesLeft]
+    
+.ReadAmountOK:
+   
+    push    esi edi ecx
+    mov     edi, esi
+    mov     esi, eax
+    rep     movsb
+    pop     ecx edi esi
+    
+    add     esi, ecx
+    add     [totalRead], ecx
+    sub     [bytesLeft], ecx
+    mov     eax, [ebx + File.Pointer]
+    add     eax, ecx
+    mov     [ebx + File.Pointer], eax
+    
+    cmp     eax, [ebx + File.Size]
+    jb      .ReadLoop
+    
+.Done:
+    mov     edi, [bytesRead]
+    mov     eax, [totalRead]
+    mov     [edi], eax
+    mov     eax, FR_OK
+    ret
+    
+.Error:
+    mov     edi, [bytesRead]
+    mov     eax, [totalRead]
+    mov     [edi], eax
+    mov     eax, FR_DISK_ERR
+    ret
+endp
+
+
+proc FAT16.Write uses ebx, fileObj: DWORD, buffer: DWORD, bytesToWrite: DWORD, bytesWritten: DWORD
+    ; For now, return "not implemented"
+    mov eax, FR_DENIED
+    ret
+endp
+
+
+proc FAT16.Seek uses ebx, fileObj: DWORD, offset: DWORD, origin: DWORD
+    mov     ebx, [fileObj]
+    test    ebx, ebx
+    jnz     .ValidObj
+    
+    mov     eax, FR_INVALID_OBJECT
+    ret
+    
+.ValidObj:
+    mov     eax, [origin]
+    cmp     eax, 0          ; SEEK_SET
+    je      .SeekSet
+    cmp     eax, 1          ; SEEK_CUR
+    je      .SeekCur
+    cmp     eax, 2          ; SEEK_END
+    je      .SeekEnd
+    
+    mov     eax, FR_INVALID_PARAMETER
+    ret
+    
+.SeekSet:
+    mov     eax, [offset]
+    jmp     .SetPointer
+    
+.SeekCur:
+    mov     eax, [ebx + File.Pointer]
+    add     eax, [offset]
+    jmp     .SetPointer
+    
+.SeekEnd:
+    mov     eax, [ebx + File.Size]
+    add     eax, [offset]
+    
+.SetPointer:
+    cmp     eax, [ebx + File.Size]
+    jbe     .PointerOK
+    
+    mov     eax, [ebx + File.Size]
+    
+.PointerOK:
+    mov     [ebx + File.Pointer], eax
+    
+    ; TODO: Update current cluster/sector based on new position
+    
+    mov eax, FR_OK
+    ret
+endp
+
+proc FAT16.FindFile uses ebx esi edi, filename: DWORD, startCluster: WORD
+    locals
+        fs          dd ?
+        nameBuf     db 12 dup ?, 0
+        extBuf      db 3 dup ?, 0
+        hasExt      db ?
+        dirCluster  dw ?
+        dirSector   dd ?
+        dirIndex    dw ?
+        entry       dd ?
+    endl
+    
+    mov [fs], FAT16.FS
+    
+    ; Parse filename
+    mov     eax, [filename]
+    lea     edx, [nameBuf]
+    lea     ecx, [extBuf]
+    stdcall FAT16.ParseFilename, eax, edx, ecx
+    cmp eax, FR_OK
+    je .NameOK
+    
+    ret
+    
+.NameOK:
+    ; Check if searching root directory
+    cmp [startCluster], 0
+    jne .SearchSubdir
+    
+    ; Search root directory
+    mov eax, [fs]
+    mov eax, [eax + FAT16.RootStart]
+    mov [dirSector], eax
+    
+    ; Calculate root directory size in sectors
+    mov ebx, [fs]
+    movzx ecx, word [ebx + FAT16.RootEntries]
+    shl ecx, 5          ; *32
+    add ecx, 511
+    shr ecx, 9          ; /512
+    
+    mov [dirIndex], 0
+    
+.RootSearchLoop:
+    ; Read directory sector
+    push ecx
+    stdcall FAT16.ReadSector, [dirSector]
+    pop ecx
+    cmp eax, FR_OK
+    jne .DiskError
+    
+    ; Search in this sector
+    mov ebx, [fs]
+    mov esi, [ebx + FAT16.CacheBuffer]
+    mov edx,  16         ; 16 entries per sector (512/32)
+    
+.SectorSearch:
+    ; Check if entry is in use
+    mov al, [esi]
+    test al, al
+    jz .NotFound        ; End of directory
+    cmp al, 0xE5
+    je .SkipEntry       ; Deleted entrys
+    
+    ; Check if long filename entry
+    mov al, [esi + DIR_ATTR]
+    cmp al, ATTR_LONG_NAME
+    je .SkipEntry
+    
+    ; Compare filename
+    push esi edi
+    lea edi, [esi + DIR_NAME]
+    lea esi, [nameBuf]
+    mov ecx, 8
+    repe cmpsb
+    jne .SkipEntry
+    lea esi, [extBuf]
+    mov ecx, 3
+    repe cmpsb
+    jne .SkipEntry
+    pop edi esi
+    
+    
+    ; Found it!
+    mov eax, FR_OK
+    mov edx, esi        ; Return pointer to entry
+    ret
+    
+.SkipEntry:
+    pop edi esi
+    add esi, 32
+    inc [dirIndex]
+    dec edx
+    jnz .SectorSearch
+    
+    ; Next sector
+    inc [dirSector]
+    dec ecx
+    jnz .RootSearchLoop
+    
+    ; Not found in root
+    jmp .NotFound
+    
+.SearchSubdir:
+    ; TODO: Implement subdirectory search
+    ; This requires following cluster chains
+    
+.NotFound:
+    mov eax, FR_NO_FILE
+    mov edx, 0
+    ret
+    
+.DiskError:
+    mov eax, FR_DISK_ERR
+    mov edx, 0
+    ret
+endp
+
+; Create new file
+proc FAT16.CreateFile uses ebx esi edi, filename: DWORD
+    ; TODO: Implement file creation
+    ; This requires finding free directory entry and allocating cluster
+    
+    mov eax, FR_DENIED  ; Not implemented yet
+    ret
+endp
+
+; Parse filename to 8.3 format
+proc FAT16.ParseFilename uses esi edi ebx, filename: DWORD, nameBuf: DWORD, extBuf: DWORD
+    mov esi, [filename]
+    mov edi, [nameBuf]
+    mov ebx, [extBuf]
+    
+    ; Clear buffers
+    push edi
+    mov ecx, 11
+    mov al, ' '
+    rep stosb
+    pop edi
+    
+    push ebx edi
+    xchg    ebx, edi
+    mov ecx, 3
+    rep stosb
+    pop edi ebx
+    
+    ; Find extension
+    mov edx, esi
+.FindDot:
+    lodsb
+    test al, al
+    jz .NoExtension
+    cmp al, '.'
+    je .HasExtension
+    jmp .FindDot
+    ; Found dot
+    ;dec esi
+    ;mov byte [esi], 0
+    ;inc esi
+
+.NoExtension:
+    mov esi, edx
+    jmp .CopyName
+    
+.HasExtension:
+    ; Copy extension (max 3 chars)
+    mov ecx, 3
+    mov edi, ebx
+.CopyExt:
+    lodsb
+    test al, al
+    jz .ExtDone
+    cmp al, ' '
+    je .ExtDone
+    stosb
+    loop .CopyExt
+    
+.ExtDone:
+    mov esi, edx
+    
+.CopyName:
+    ; Copy filename (max 8 chars)
+    mov ecx, 8
+    mov edi, [nameBuf]
+.CopyNameLoop:
+    lodsb
+    test al, al
+    jz .NameDone
+    cmp al, '.'
+    je .NameDone
+    cmp al, ' '
+    je .NameDone
+    stosb
+    loop .CopyNameLoop
+    
+.NameDone:
+    ; Convert to uppercase
+    stdcall FAT16.StringToUpper, [nameBuf]
+    stdcall FAT16.StringToUpper, [extBuf]
+    
+    mov eax, FR_OK
+    ret
+endp
+
+; Convert string to uppercase
+proc FAT16.StringToUpper uses esi, str: DWORD
+    mov esi, [str]
+    
+.Loop:
+    mov al, [esi]
+    test al, al
+    jz .Done
+    cmp al, 'a'
+    jb .Next
+    cmp al, 'z'
+    ja .Next
+    sub al, 0x20
+    mov [esi], al
+.Next:
+    inc esi
+    jmp .Loop
+    
+.Done:
+    ret
+endp
+
+; ============================================
+; Directory Listing
+; ============================================
+
+; Open directory
+proc FAT16.OpenDir uses ebx, path: DWORD
+    ; TODO: Implement directory opening
+    mov eax, FR_DENIED  ; Not implemented yet
+    ret
+endp
+
+; Read directory entry
+proc FAT16.ReadDir uses ebx, dirObj: DWORD, fileInfo: DWORD
+    ; TODO: Implement directory reading
+    mov eax, FR_DENIED  ; Not implemented yet
+    ret
+endp
+
+; Close directory
+proc FAT16.CloseDir uses ebx, dirObj: DWORD
+    ; TODO: Implement directory closing
+    mov eax, FR_DENIED  ; Not implemented yet
+    ret
+endp
+
+; ============================================
+; Utility Functions
+; ============================================
+
+; Get free space
+proc FAT16.GetFree uses ebx
+    mov ebx, FAT16.FS
+    
+    ; Check if mounted
+    cmp byte [ebx + FAT16.Mounted], 0
+    jne .Mounted
+    
+    mov eax, FR_NOT_ENABLED
+    mov edx, 0
+    ret
+    
+.Mounted:
+    ; If free clusters count is unknown, calculate it
+    cmp dword [ebx + FAT16.FreeClusters], 0xFFFFFFFF
+    jne .Known
+    
+    ; TODO: Count free clusters by scanning FAT
+    mov eax, FR_OK
+    mov edx, 0xFFFFFFFF  ; Unknown
+    ret
+    
+.Known:
+    ; Calculate free space in bytes
+    mov eax, [ebx + FAT16.FreeClusters]
+    movzx ecx, byte [ebx + FAT16.SectorsPerCluster]
+    mul ecx
+    movzx ecx, word [ebx + FAT16.BytesPerSector]
+    mul ecx
+    
+    mov edx, eax        ; Free space in bytes
+    mov eax, FR_OK
+    ret
+endp
+
+; Get filesystem info
+proc FAT16.GetInfo uses ebx esi, infoBuf: DWORD
+    mov ebx, FAT16.FS
+    mov esi, [infoBuf]
+    
+    ; Check if mounted
+    cmp byte [ebx + FAT16.Mounted], 0
+    jne .Mounted
+    
+    mov eax, FR_NOT_ENABLED
+    ret
+    
+.Mounted:
+    ; Fill info structure
+    ; TODO: Fill with actual filesystem information
+    
+    mov eax, FR_OK
+    ret
+endp
+
+; ============================================
+; High-level API
+; ============================================
+
+; Load file to memory
+proc FAT16.LoadFile uses ebx esi edi, filename: DWORD, buffer: DWORD, maxSize: DWORD, bytesRead: DWORD
+    locals
+        fileObj     dd ?
+        result      dd ?
+    endl
+    
+    ; Open file
+    stdcall FAT16.Open, [filename], FA_READ
+    cmp eax, FR_OK
+    je .OpenOK
+    
+    mov [result], eax
+    jmp .Error
+    
+.OpenOK:
+    mov [fileObj], edx
+    
+    ; Read file
+    stdcall FAT16.Read, [fileObj], [buffer], [maxSize], [bytesRead]
+    mov [result], eax
+    
+    ; Close file
+    push eax
+    stdcall FAT16.Close, [fileObj]
+    pop eax
+    
+.Error:
+    mov eax, [result]
+    ret
+endp
+
+; Check if file exists
+proc FAT16.FileExists, filename: DWORD
+    ; Try to find the file
+    stdcall FAT16.FindFile, [filename], 0
+    cmp eax, FR_OK
+    je .Exists
+    
+    ; File not found or error
+    xor eax, eax
+    ret
+    
+.Exists:
+    mov eax, 1
+    ret
+endp
+
+; Get file size
+proc FAT16.GetFileSize uses ebx, filename: DWORD
+    locals
+        dirEntry    dd ?
+    endl
+    
+    ; Find file
+    stdcall FAT16.FindFile, [filename], 0
+    cmp eax, FR_OK
+    je .Found
+    
+    mov eax, 0xFFFFFFFF  ; Error
+    ret
+    
+.Found:
+    ; Get size from directory entry
+    mov eax, [edx + DIR_FILE_SIZE]
+    ret
+endp
+
+proc FAT16.Test uses ebx esi edi
+    locals
+        buffer      dd ?
+        bytesRead   dd 0
+        filename    db "KERNEL.SYS",0
+    endl
+    stdcall VGA.PutString, Str.TestingFAT16
+    
+    stdcall FAT16.Mount, 0
+    cmp eax, FR_OK
+    je .MountOK
+    
+    stdcall VGA.PutString, Str.MountFailed
+    stdcall VGA.PrintDec, eax
+    stdcall VGA.PutString, Str.NewLine
+    ret
+    
+.MountOK:
+    stdcall VGA.PutString, Str.MountOK
+    
+    lea     eax, [filename]
+    stdcall FAT16.FileExists, eax
+    test eax, eax
+    jnz .FileExists
+    
+    stdcall VGA.PutString, Str.FileNotFound
+    jmp .Cleanup
+    
+.FileExists:
+    stdcall VGA.PutString, Str.FileFound
+    
+    lea     eax, [filename]
+    stdcall FAT16.GetFileSize, eax
+    stdcall VGA.PutString, Str.FileSize
+    stdcall VGA.PrintDec, eax
+    stdcall VGA.PutString, Str.Bytes
+
+    cmp eax, 0
+    je .NoSize
+    cmp eax, 0xFFFFFFFF
+    je .NoSize
+    
+    push eax
+    stdcall KernelMemManager.Malloc, eax
+    mov [buffer], eax
+    pop ecx
+    test eax, eax
+    jnz .BufferOK
+    
+    stdcall VGA.PutString, Str.NoMemory
+    jmp .Cleanup
+    
+.BufferOK:
+    lea     eax, [filename]
+    lea     edx, [bytesRead]
+    stdcall FAT16.LoadFile, eax, [buffer], ecx, edx
+    cmp eax, FR_OK
+    je .LoadOK
+    
+    stdcall VGA.PutString, Str.LoadFailed
+    stdcall VGA.PrintDec, eax
+    stdcall VGA.PutString, Str.NewLine
+    jmp .FreeBuffer
+    
+.LoadOK:
+    stdcall VGA.PutString, Str.LoadOK
+    mov eax, [bytesRead]
+    stdcall VGA.PrintDec, eax
+    stdcall VGA.PutString, Str.BytesRead
+    
+    stdcall VGA.PutString, Str.FirstBytes
+    mov esi, [buffer]
+    mov ecx, 16
+    cmp ecx, [bytesRead]
+    jbe .DisplayLoop
+    mov ecx, [bytesRead]
+    
+.DisplayLoop:
+    lodsb
+    stdcall VGA.PrintHex, eax
+    stdcall VGA.PutChar, ' '
+    loop .DisplayLoop
+    
+    stdcall VGA.PutString, Str.NewLine
+    
+.FreeBuffer:
+    stdcall KernelMemManager.Free, [buffer]
+    
+.NoSize:
+.Cleanup:
+    stdcall FAT16.Unmount, 0
+    
+    stdcall VGA.PutString, Str.TestComplete
+    ret
+endp
+
 
 }
 

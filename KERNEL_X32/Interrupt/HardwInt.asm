@@ -217,8 +217,8 @@ HardwInt.GenHandler:
 
 
 block(.data) {
-    IDE.Write $
     HardwInt.Hand       db (HardwInt.Hand.Size * 64) dup ? 
+     
     HardwInt.Handler.Mutex db ?   
 }
 

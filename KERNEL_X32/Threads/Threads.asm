@@ -39,13 +39,16 @@ virtual at 0
      Thread.SignalWaiting:              ; 1
      Thread.Pad1              dw ?      ; 11
 
+     IDE.Write $
      Thread.Next              dw ?
+     IDE.Write $
      Thread.Previous          dw ?
 
      Thread.Pad              db 448 dup ?
 
      Thread.XmmStateArea      db 512 dup ?
      ThreadSize:
+     IDE.Write $
 end virtual
 
 
@@ -256,6 +259,7 @@ block(.initData){
 }
 
 block(.data){
+     IDE.Write $
      Threads.Mutex db ?
      Threads.MaxThreads dw ?
 }
