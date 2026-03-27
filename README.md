@@ -154,5 +154,5 @@ qemu-system-i386 -hda HelloOS.img
 ---
 
 <p align="center">
-  Сделано с ❤️ и кучей <code>mov eax, 0</code>
+  Сделано с ❤️ и кучей <code>xor eax, eax</code>
 </p>
