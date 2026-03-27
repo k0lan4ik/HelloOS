@@ -1,26 +1,6 @@
         format binary as 'SYS'
         include 'proc16.inc'
-        include 'Blocks.inc'
-
-macro IDE.Write Value*
-{
-  local value, ofs, digit
-  value = Value
-  ofs = 15
-  repeat 16
-    digit = (value shr (ofs * 4)) and $F
-    if digit > 9
-      display digit + 'A' - 10
-    else
-      display digit + '0'
-    end if
-    if % = 8
-      display ''''
-    end if
-    ofs = ofs - 1
-  end repeat
-  display 13,10
-}
+        include 'Macros.inc'
 
 ;define DEBUG
 macro STOP_POINT {
@@ -52,7 +32,6 @@ macro PRINT_STOP  {
 }
 
 
-; чтобы всё поместилось сделаю загрузку на 4000 ядра
 block(.consts) {
 GDT_NULL_SELECTOR     equ 0x00
 KERNEL_CODE_SELECTOR  equ 0x08
@@ -65,28 +44,104 @@ CPL0_THREAD           equ 0x38
 
 TIMER_HZ = 1000
 
-Options.Kernel.Base     equ     $0600
-Options.Kernel.HierHalf equ     $F0000000
+Options.Kernel.GDT        equ     GDT
+Options.Kernel.IDT        equ     $1000
+Options.Kernel.E820       equ     Options.Kernel.IDT + 256 * 8
+Options.Kernel.EntryPoint equ     $2000 
+Options.Kernel.Base       equ     Options.Kernel.EntryPoint - 64 - 16
+Options.Kernel.StackHead  equ     Options.Kernel.IDT
+Options.Kernel.HierHalf   equ     $E0000000
+
 }
-  include 'Structs.asm'
+
+include 'Structs.asm'
   
 
 block (.text) {
+
 use16
 org Options.Kernel.Base
+    dd ?
+
+GDTDescriptor:
+    dw GDTend - GDT - 1 ; Лимит (размер - 1)
+    dd GDT              ; Линейный адрес таблицы
+
+IDTDescriptor:
+    dw 256 * 8 - 1        ; Лимит (размер - 1)
+    dd Options.Kernel.IDT ; Линейный адрес таблицы
+
+GDT:
+    ; 0x00: GDT_NULL_SELECTOR
+    dq 0x0000000000000000
+
+    ; 0x08: KERNEL_CODE_SELECTOR (Base=0, Limit=0xfffff, Type=Code, DPL=0)
+    dw 0xFFFF      ; Limit (bits 0-15)
+    dw 0x0000      ; Base (bits 0-15)
+    db 0x00        ; Base (bits 16-23)
+    db 10011010b   ; Access: P=1, DPL=00, S=1, Type=1010 (Code Exec/Read)
+    db 11001111b   ; Flags: G=1 (4KB units), D=1 (32-bit), L=0, Limit (16-19)
+    db 0x00        ; Base (bits 24-31)
+
+    ; 0x10: KERNEL_DATA_SELECTOR (Base=0, Limit=0xfffff, Type=Data, DPL=0)
+    dw 0xFFFF      ; Limit
+    dw 0x0000      ; Base
+    db 0x00        ; Base
+    db 10010010b   ; Access: P=1, DPL=00, S=1, Type=0010 (Data Read/Write)
+    db 11001111b   ; Flags: G=1, D=1, Limit (16-19)
+    db 0x00        ; Base
+
+    ; 0x18: TSS_SELECTOR (Base и Limit заполняются динамически в ядре)
+    ; Пока зарезервируем место (8 байт)
+    dq 0x0000000000000000 
+
+    ; 0x20: USER_CODE_SELECTOR (Base=0, Limit=0xfffff, Type=Code, DPL=3)
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 11111010b   ; Access: P=1, DPL=11 (User), S=1, Type=1010
+    db 11001111b
+    db 0x00
+
+    ; 0x28: USER_DATA_SELECTOR (Base=0, Limit=0xfffff, Type=Data, DPL=3)
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 11110010b   ; Access: P=1, DPL=11 (User), S=1, Type=0010
+    db 11001111b
+    db 0x00
+
+    ; 0x30: CPL0_PROCDATA (Специфические данные процесса ядра)
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10010010b   ; Ring 0 Data
+    db 11001111b
+    db 0x00
+
+    ; 0x38: CPL0_THREAD (Специфические данные потока ядра)
+    dw 0xFFFF
+    dw 0x0000
+    db 0x00
+    db 10010010b   ; Ring 0 Data
+    db 11001111b
+    db 0x00
+
+GDTend:
+
+org Options.Kernel.EntryPoint
 RealEntry:
+     xchg    bx, bx
      mov     si, dx
      shl     esi, 16
      mov     si, ax 
 
      xor     ax, ax
      mov     ss, ax
-     mov     sp, Options.Kernel.Base
+     mov     sp, Options.Kernel.StackHead
 
      cli
      call      EnableA20WithMessage     
-     
-
      sti
      
      mov     ah, 00h
@@ -102,10 +157,7 @@ RealEntry:
      mov dh,25              
      mov ah,02h               
      int 10h
-     cli
-     
-     call CreateGDT_IDT
-     
+     cli 
 jmp GotoProtected 
 
 
@@ -284,113 +336,9 @@ proc EnableA20WithMessage
 
 endp
 
-
-proc CreateGDT_IDT
-
-     xor       ax, ax
-     mov       es, ax
-     mov       di, Real.GDT
-     mov       cx, 6 * 4
-     xor       ax, ax
-     rep stosw
-
-
-     mov       cx, 256
-@@:
-     mov       eax, XInt.CpuCrash
-     stosw
-
-     mov       ax, 0x8
-     stosw
-
-     mov       ah, 1_00_0_1111b
-     xor       al, al
-     stosw
-
-     shr       eax, 16
-     stosw
-     loop      @B
-
-
-     mov       di, 8 + Real.GDT
-
-     ; Код ядра
-     mov       eax, $000FFFFF
-     xor       ebx, ebx 
-     mov       cx,  1_1_0_0_0000_1_00_1_1010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-
-     ; Тоже, но для данных ядра
-     mov       eax, $000FFFFF
-     xor       ebx, ebx
-     mov       cx,  1_1_0_0_0000_1_00_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-     
-     mov       eax, TSSend - TSS - 1
-     mov       ebx, TSS     
-     mov       cx,  0_0_0_0_0000_1_00_0_1001b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-
-     ; Пользовательский код
-     mov       eax, $000FFFFF
-     xor       ebx, ebx
-     mov       cx,  1_1_0_0_0000_1_11_1_1010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-
-     ; Тоже, но для данных Пользователя
-     mov       eax, $000FFFFF 
-     xor       ebx, ebx
-     mov       cx,  1_1_0_0_0000_1_11_1_0010b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-
-     mov       eax, $000FFFFF
-     mov       ebx, $FF000000
-     mov       cx,  1_1_0_0_0000_1_00_1_0011b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-
-     mov       eax, $0000FFFF
-     mov       ebx, $FE000000
-     mov       cx,  1_1_0_0_0000_1_00_1_0011b  ;G:D/B:L:AVL:NotNeed:P:DPL:S:Type
-     call      CreateDescriptor
-
-     ret   
-endp 
-
-;==============================================================================}
-proc CreateDescriptor;{Создание дескриптора в реальном режиме
-; --------------------------------------------------------
-; EAX - Лимит 20
-; EBX - Адрес 32
-; CX  - Конфигурация
-; ES:DI - Указатель на элемент GDT
-; --------------------------------------------------------
-
-     stosw ; limit
-
-     xchg  eax, ebx
-     stosw ; address 0..15
-
-     shr   eax, 16
-     stosb ; addr 16..23
-
-     xchg  eax, ebx
-     mov   al, cl
-     stosb ; config low
-
-     shr   eax, 16
-     or    al, ch
-     stosb ; config + limit
-
-     xchg  eax, ebx
-     shr   ax, 8
-     stosb ; addr 24..31
-
-    ret
-endp
-
 GotoProtected:   
         
-     mov       di,  Options.Kernel.Base + 4
+     mov       di,  Options.Kernel.E820 + 4
      xor       ebx, ebx
      xor       ebp, ebp
      mov       edx, 0x0534D4150
@@ -426,27 +374,20 @@ GotoProtected:
      or        ecx, [es:di + 12]
      jz        .SkipEntry
      inc       ebp
-     cmp       ebp, 5
-     jge       .E820f
      add       di, 24
+     cmp       di, Options.Kernel.Base     
+     jae       .E820f
 .SkipEntry:
-        test      ebx, ebx              
-        jne       .E820lp
+     test      ebx, ebx              
+     jne       .E820lp
 .E820f:
-        mov       [es:Options.Kernel.Base], ebp
-     
-     
+     mov       [es:Options.Kernel.E820], ebp
      
      cli
 
-     mov word  [es:Real.GDTptr], GDTend - GDT
-     mov dword [es:Real.GDTptr + 2], Real.GDT
-     lgdt      [es:Real.GDTptr]
-
-     ; Загрузка IDT
-     mov word  [es:Real.IDTptr], IDTend - IDT 
-     mov dword [es:Real.IDTptr + 2], Real.IDT
-     lidt      [es:Real.IDTptr]         
+     lgdt      [GDTDescriptor]
+     
+     lidt      [IDTDescriptor]
      
      
      mov       eax, cr0
@@ -457,8 +398,8 @@ GotoProtected:
 
 .Error:
      STOP_POINT
-             pusha
-                     mov bx,0                 
+        pusha
+        mov bx,0                 
         mov dl,0                
         mov dh,0              
         mov ah,02h               
@@ -474,49 +415,42 @@ GotoProtected:
 include 'macro\proc32.inc'
 use32
 
-proc Paging.Init 
+proc Paging.Init
      push      ebp
      mov       ebp, esp
      push      edi ecx eax ebx
      mov       edi, PageDirectory
-     mov       ecx, 1024
-     mov       eax, 0x00000002 ; Supervisor, R/W, Not Present
+     mov       ecx, 1024 * 3
+     xor       eax, eax
      rep stosd
      
-     mov       edi, FramePool.Start shl 12
-     mov       ecx, FramePool.StartCount * 1024
-     xor       eax, eax
-     rep       stosd
-
-     mov       edi, P2
-     mov       ecx, 1024
-     rep       stosd
-
-     mov       edi, P3
-     mov       ecx, 1024
-     rep       stosd
-
-     mov       dword [PageDirectory + 0x3FF * 4], PageDirectory or 0x019 
-     mov       dword [PageDirectory + 0x3F8 * 4], P3 or 0x019
-     mov       dword [PageDirectory + 0x200 * 4], P2 or 0x001
+     mov       dword [PageDirectory + 0xFFC00000 shr 22 * 4], PageDirectory or 0x019 ;(Present, Read/Write, Global)
+     
+     mov       dword [PageTable2], 0x00 or 0x003
+     mov       dword [PageTable2 + 4], 0x01000 or 0x003 
+     mov       dword [PageDirectory + 0xFF000000 shr 22 * 4], PageTable2 or 0x019 ; (Present, Read/Write, Global)
 
      mov       edi, PageTable1
-     mov       ecx, 256
-     xor       ebx, ebx
+     mov       esi, Options.Kernel.EntryPoint shr 12 
+.MapKernelPages:
+    
+     mov       eax, esi
+     shl       eax, 12
+     or        eax, 0x003
 
-.MapFirst4MB:
-     lea       eax, [edi + ecx*4 - 4]
-     mov       ebx, ecx
-     dec       ebx
-     shl       ebx, 12
-     or        ebx, 0x003
+     mov dword [edi], eax 
+     inc       esi
+     add       edi, 4
 
-     mov dword [eax], ebx 
-     loop      .MapFirst4MB
-
+     cmp       esi, TSS shr 12
+     jb        .MapKernelPages
+ xchg bx, bx
      mov dword [PageDirectory], PageTable1 or 0x003
 
      mov dword [PageDirectory + (Options.Kernel.HierHalf shr 22) * 4], PageTable1 or 0x003
+
+     
+ 
 
      mov       eax, PageDirectory
      mov       cr3, eax
@@ -525,7 +459,17 @@ proc Paging.Init
      or        eax, 0x80000000
      mov       cr0, eax
 
-     add       dword[ebp + 4], Options.Kernel.HierHalf 
+     add       esp, 0xFF000000 - 0x1000
+     add       ebp, 0xFF000000 - 0x1000
+     
+     add       dword [GDTDescriptor + 2], 0xFF000000
+     lgdt      [GDTDescriptor]
+
+     
+     add       dword [IDTDescriptor + 2], 0xFF000000
+     lidt      [IDTDescriptor]
+
+     add       dword[ebp + 4], Options.Kernel.HierHalf ;- Options.Kernel.EntryPoint
      xor       eax, eax
 .UpDate:
      invlpg    [eax]
@@ -543,20 +487,12 @@ ProtectedEntry:
      mov       ds, ax
      mov       es, ax
      mov       ss, ax
-     mov       esp, Options.Kernel.Base
-
+     mov       esp, Options.Kernel.StackHead
 
      
      call      Paging.Init
 org Options.Kernel.HierHalf + $
-     
-     
-     mov dword [GDTptr + 2], GDT
-     lgdt      [GDTptr]
-
-     
-     mov dword [IDTptr + 2], IDT
-     lidt      [IDTptr]         
+        
 
      jmp       KERNEL_CODE_SELECTOR:@F
      
@@ -580,76 +516,76 @@ org Options.Kernel.HierHalf + $
      call      TSS.Init
      
      
-     stdcall   FramePool.Init1
+ ;    stdcall   FramePool.Init1
 
      
      ;Инициализация страници под procdata for this processor
-     stdcall   FramePool.GetFreePage
-     stdcall   Pager.MapPage, 0xFF000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+ ;    stdcall   FramePool.GetFreePage
+ ;    stdcall   Pager.MapPage, 0xFF000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      ;Инициализация страниц под первые 12 потоков
-     stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0xFE000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+;     stdcall   FramePool.GetFreePage 
+;     stdcall   Pager.MapPage, 0xFE000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      
-     stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0xFE001, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+;     stdcall   FramePool.GetFreePage 
+;     stdcall   Pager.MapPage, 0xFE001, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
-     stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0xFE002, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+;     stdcall   FramePool.GetFreePage 
+;     stdcall   Pager.MapPage, 0xFE002, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
 
      ;Страница для первых N процессов
-     stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0xFF102, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+;     stdcall   FramePool.GetFreePage 
+;     stdcall   Pager.MapPage, 0xFF102, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      ;тут вместо регистра надо адрес таблицы и IDT и GDT
      
-     stdcall   Pager.MapPage, 0xFF100, Real.GDT shr 12,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+;     stdcall   Pager.MapPage, 0xFF100, Real.GDT shr 12,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
      
      ;Переназначение таблицы
      
 
      ; E820 memory map
-     stdcall   Pager.MapPage, 0xFF101, 0x2, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+;     stdcall   Pager.MapPage, 0xFF101, 0x2, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
 
      ; page fault handler table
-     stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0xFF120, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+;     stdcall   FramePool.GetFreePage 
+;     stdcall   Pager.MapPage, 0xFF120, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
 
     
      
 
-     stdcall   GS.Init 
+;     stdcall   GS.Init 
     
-     stdcall   IntHeand.Init
-     stdcall   XInt.Init
+;     stdcall   IntHeand.Init
+;     stdcall   XInt.Init
      
-     stdcall   HardwInt.Init       
-     stdcall   KernPageFault.Init  
+;     stdcall   HardwInt.Init       
+;     stdcall   KernPageFault.Init  
 
-     stdcall   KernelMemManager.Init   
+;     stdcall   KernelMemManager.Init   
          
   
-     stdcall   VGA.Init
-     stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE     
-     mov  edi, 0xf00b8000 + 80 * 20 * 2
-     mov  ebx, dword[VGA.CursorX]
-     call HexPrint
-     mov  edi, 0xf00b8000 + 80 * 21 * 2
-     mov  ebx, dword[VGA.ColorFg]
-     call HexPrint
-     stdcall   VGA.PutString, Str.Goida 
+;     stdcall   VGA.Init
+;     stdcall   VGA.SetColor, VGA_COLOR_YELLOW, VGA_COLOR_BLUE     
+;     mov  edi, 0xf00b8000 + 80 * 20 * 2
+;     mov  ebx, dword[VGA.CursorX]
+;     call HexPrint
+;     mov  edi, 0xf00b8000 + 80 * 21 * 2
+;     mov  ebx, dword[VGA.ColorFg]
+;     call HexPrint
+;     stdcall   VGA.PutString, Str.Goida 
 
      
-     stdcall   ProcessManager.Init     
-     stdcall   Sched.Init               
+;     stdcall   ProcessManager.Init     
+;     stdcall   Sched.Init               
      
      
-     stdcall   FramePool.Init2
+;     stdcall   FramePool.Init2
      
   ;   PRINT_STOP
      
-     stdcall   Timer.TimerInit, TIMER_HZ
+;     stdcall   Timer.TimerInit, TIMER_HZ
      
  
  ;    STOP_POINT
@@ -657,51 +593,68 @@ org Options.Kernel.HierHalf + $
 
 
 
-     stdcall   DMA.Init
+ ;    stdcall   DMA.Init
      
     
      
-     stdcall   Process.Create
-     stdcall   Threads.Create, eax, PrintThread
-     sti
-     int       30h
+  ;   stdcall   Process.Create
+   ;  push      eax
+    ; stdcall   Threads.Create, eax, PrintThread
+    ; pop       eax
+    ; stdcall   Threads.Create, eax, HellThread
+    ; sti
+    ; int       30h
      jmp       $
 
 proc PrintThread
 
      ;STOP_POINT
-     stdcall   Floppy.Init
-     stdcall   Floppy.DetectDrives
+     ;stdcall   Floppy.Init
+     ;stdcall   Floppy.DetectDrives
 
      ; Чтение загрузочного сектора
-     stdcall   FramePool.GetFreePage 
-     stdcall   Pager.MapPage, 0x7C00 shr 12, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+     ;stdcall   FramePool.GetFreePage 
+     ;stdcall   Pager.MapPage, 0x7C00 shr 12, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
       
-     stdcall  Floppy.Read, 0, 0, 1, 0x7C00
+     ;stdcall  Floppy.Read, 0, 0, 1, 0x7C00
 
-     stdcall  VGA.PutString, 0x7C00
+     ;stdcall  VGA.PutString, 0x7C00
      ; Асинхронное чтение нескольких секторов
      ;stdcall Floppy.ReadAsync, 0, 1, 4, buffer_address, callback_function
 
      ; Проверка статуса
-     stdcall Floppy.GetStatus
+     ;stdcall Floppy.GetStatus
      ;STOP_POINT
-     stdcall FAT16.Init
-     xchg bx, bx
+     ;stdcall FAT16.Init
+     ;xchg bx, bx
     
-     stdcall FAT16.Test
-     stdcall   VGA.PrintDec, eax
-     stdcall   VGA.PutString, Str.Goida
+     ;stdcall FAT16.Test
+     ;stdcall   VGA.PrintDec, eax
+     ;stdcall   VGA.PutString, Str.Goida
 .InfLoop:
-     stdcall   VGA.PrintDec, [Timer.TimerMs]
-     stdcall   VGA.PutString, Str.Goida
-     stdcall   VGA.SetColor, dword[Color2], dword[Color1]
-     inc       [Color1]
+     ;stdcall   VGA.SetColor, dword[Color2], dword[Color1]
+     ;stdcall   VGA.ClearScreen
+     ;stdcall   VGA.PrintDec, [Timer.TimerMs]
+     ;stdcall   VGA.PutString, Str.Goida
+     ;inc       [Color1]
      and       [Color1], 00000111b
      inc       [Color2]
      and       [Color2], 00000111b
-     stdcall   Timer.Sleep, 1000 
+     ;stdcall   Timer.Sleep, 1000 
      int       30h
+     jmp       .InfLoop
+endp
+
+proc HellThread
+
+.InfLoop:
+     ;stdcall   Timer.Sleep, 500
+     ;stdcall   VGA.SetColor, VGA_COLOR_MAGENTA, VGA_COLOR_BLACK
+     ;stdcall   VGA.ClearScreen
+     ;stdcall   VGA.PutString, Str.Hell
+     ;
+     ;stdcall   Timer.Sleep, 500
+     ;int       30h
      jmp       .InfLoop
 endp
 
@@ -807,36 +760,37 @@ endp
 
 block(.initData){
 Kernel.MaxMem dd 0xf0100000;Kernel.EndMem 
-Color1    db VGA_COLOR_BLACK
-Color2    db VGA_COLOR_BLUE
+Color1    db 1;VGA_COLOR_BLACK
+Color2    db 1;VGA_COLOR_BLUE
 Str.Goida db "Hello OS x32 <3", 13, 0
+Str.Hell db "Hello Word!!!", 13, 0
 Str.A     db "A",0
 }
 block(.data){
 }
 
 
-include 'Memory/Pager.asm'
-include 'Memory/FramePool.asm'
-include 'Memory/GS.asm'
-include 'Memory/KernelMemManager.asm'
+;include 'Memory/Pager.asm'
+;include 'Memory/FramePool.asm'
+;include 'Memory/GS.asm'
+;include 'Memory/KernelMemManager.asm'
 
-include 'Threads/Mutex.asm'
-include 'Threads/Process.asm'
-include 'Threads/ProcessManager.asm'
-include 'Threads/Sched.asm'
-include 'Threads/Threads.asm'
+;include 'Threads/Mutex.asm'
+;include 'Threads/Process.asm'
+;include 'Threads/ProcessManager.asm'
+;include 'Threads/Sched.asm'
+;include 'Threads/Threads.asm'
 
-include 'Interrupt/IntHeand.asm'
-include 'Interrupt/XInt.asm'
-include 'Interrupt/HardwInt.asm' 
-include 'Interrupt/KernPageFault.asm'
-include 'Interrupt/Timer.asm'
+;include 'Interrupt/IntHeand.asm'
+;include 'Interrupt/XInt.asm'
+;include 'Interrupt/HardwInt.asm' 
+;include 'Interrupt/KernPageFault.asm'
+;include 'Interrupt/Timer.asm'
 
-include 'Drivers/VGA.asm'
-include 'Drivers/DMA.asm'
-include 'Drivers/Floppy.asm'
-include 'Drivers/FAT16.asm'
+;include 'Drivers/VGA.asm'
+;include 'Drivers/DMA.asm'
+;include 'Drivers/Floppy.asm'
+;include 'Drivers/FAT16.asm'
 
 putBlocks .consts
 putBlocks .text

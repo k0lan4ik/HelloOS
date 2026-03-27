@@ -27,28 +27,21 @@ virtual at 0
      Thread.KernelStack       dd ?
      Thread.StackBase         dd ?
      Thread.Stack             dd ?
-     Thread.FsBase            dd ?
-
+     
+     Thread.Next              dw ?
+     Thread.Previous          dw ?
+     
+     Thread.Tid               dw ?
      Thread.Pid               dw ?
      Thread.Priority          db ?
      Thread.Quantum           db ?
-     Thread.State             db ?
-     Thread.Unblock           db ?
-     Thread.Killed:                     ; 1
-     Thread.Type:                       ; 3
-     Thread.SignalWaiting:              ; 1
-     Thread.Pad1              dw ?      ; 11
-
-     IDE.Write $
-     Thread.Next              dw ?
-     IDE.Write $
-     Thread.Previous          dw ?
-
-     Thread.Pad              db 448 dup ?
+     Thread.Type              db ?
+     
+     
+     times 512-$ db ? 
 
      Thread.XmmStateArea      db 512 dup ?
      ThreadSize:
-     IDE.Write $
 end virtual
 
 

@@ -1,34 +1,6 @@
-block(.consts){
-
-
-Real.GDT       = GDT  - Options.Kernel.HierHalf
-Real.GDTend    = GDTend - Options.Kernel.HierHalf
-Real.GDTptr    = GDTptr - Options.Kernel.HierHalf
-Real.IDT       = IDT - Options.Kernel.HierHalf
-Real.IDTend    = IDTend - Options.Kernel.HierHalf
-Real.IDTptr    = IDTptr - Options.Kernel.HierHalf
-Real.PageDirectory = PageDirectory - Options.Kernel.HierHalf
-Real.PageTable1 = PageTable1 - Options.Kernel.HierHalf
-}
-
 block(.structs){
-     
-;virtual at Options.Kernel.HierHalf + $7000
- times (16 - ($ mod 16)) db ?
-GDT:
-     times 10 dq ?
-GDTend:
-GDTptr:
-    dw ?  
-    dd ?               
-     times (16 - ($ mod 16)) db ?
-IDT:
-    times 256 dq ? 
-IDTend:
-IDTptr:
-    dw ?   
-    dd ?                
-     times (16 - ($ mod 16)) db ?
+virtual at $
+align     1000h
 TSS:
      .LINK       dw ?
      .Res1       dw ?
@@ -69,12 +41,14 @@ TSS:
      .IOPB       dw ?
      .SSP        dd ?
 TSSend:
-;end virtual
-PageDirectory = 0x80000
-     
-PageTable1 = PageDirectory +  4096
-P2 =  PageTable1 + 4096
-P3 = P2 + 4096
+align 1000h
+PageDirectory:
+     db        1000h dup ?    
+PageTable1:
+     db        1000h dup ?  
+PageTable2:
+     db        1000h dup ?  
+end virtual
      
 }
 

@@ -10,7 +10,7 @@ virtual at 0
         Process.Accounting  dd ?
         Process.Procname    dd ?
         Process.Status      db ?
-        Process.Pad         db 11 dup ?
+        times 32-$ db ?
         ProcessSize:
 end virtual
 }

@@ -111,8 +111,8 @@ macro build_data_area
   end repeat
 }
 
-;add_file 'KERNEL  SYS', 'KERNEL_X32/KERNEL.sys'
-add_file 'KERNEL  SYS', 'KERNEL/KERNEL.sys'
+add_file 'KERNEL  SYS', 'KERNEL_X32/KERNEL.sys'
+;add_file 'KERNEL  SYS', 'KERNEL/KERNEL.sys'
 
 
 org 7C00h
@@ -141,7 +141,8 @@ VolumeID              dd 12345678h
 VolumeLabel           db 'NO_NAME    '
 FileSystemType        db 'FAT16   '
 
-BootAdr = 0x600
+EntryAdr = $2000
+BootAdr = $2000 - 64 - 16 
 
 start:
 
@@ -334,7 +335,7 @@ Continue:
         jb      .LoadLoop
         ;mov     ax, [data_kernel_size]
         ;mov     dx, [data_kernel_size + 2]
-        jmp      $0000:BootAdr ; ? ??? ????????
+        jmp      $0000:EntryAdr ; ? ??? ????????
 
 lba_to_chs:
         cmp     dx, [SectorsPerTrack]
