@@ -1,5 +1,5 @@
 block(.structs){
-virtual at $
+virtual at $ - (Options.Kernel.HierHalf - Options.Kernel.EntryPoint)
 align     1000h
 TSS:
      .LINK       dw ?
@@ -48,6 +48,11 @@ PageTable1:
      db        1000h dup ?  
 PageTable2:
      db        1000h dup ?  
+PageTable3:
+     db        1000h dup ?
+PageTable4:
+     db        1000h dup ? 
+BitMapPage:  
 end virtual
      
 }

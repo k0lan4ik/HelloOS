@@ -50,8 +50,11 @@ Options.Kernel.E820       equ     Options.Kernel.IDT + 256 * 8
 Options.Kernel.EntryPoint equ     $2000 
 Options.Kernel.Base       equ     Options.Kernel.EntryPoint - 64 - 16
 Options.Kernel.StackHead  equ     Options.Kernel.IDT
+
 Options.Kernel.HierHalf   equ     $E0000000
 
+
+Options.Kernel.Hier.StackHead equ 0xFB000000
 }
 
 include 'Structs.asm'
@@ -420,17 +423,21 @@ proc Paging.Init
      mov       ebp, esp
      push      edi ecx eax ebx
      mov       edi, PageDirectory
-     mov       ecx, 1024 * 3
+     mov       ecx, 1024 * 5
      xor       eax, eax
      rep stosd
      
-     mov       dword [PageDirectory + 0xFFC00000 shr 22 * 4], PageDirectory or 0x019 ;(Present, Read/Write, Global)
+     mov       dword [PageDirectory + (0xFFC00000 shr 22) * 4], PageDirectory or 0x019 ;(Present, Read/Write, Global)
      
-     mov       dword [PageTable2], 0x00 or 0x003
-     mov       dword [PageTable2 + 4], 0x01000 or 0x003 
-     mov       dword [PageDirectory + 0xFF000000 shr 22 * 4], PageTable2 or 0x019 ; (Present, Read/Write, Global)
+     mov       dword [PageTable2],  0x01000 or 0x003
+     ;mov       dword [PageTable2 + 4], 0x01000 or 0x003 
+     mov       dword [PageDirectory + (Options.Kernel.Hier.StackHead shr 22) * 4], PageTable2 or 0x019 ; (Present, Read/Write, Global)
 
+     mov       dword [PageTable3 + 1023 * 4], 0x00 or 0x003
+     mov       dword [PageDirectory + ((Options.Kernel.Hier.StackHead - 0x1000) shr 22) * 4], PageTable3 or 0x019 ; (Present, Read/Write, Global)
+     
      mov       edi, PageTable1
+     mov       edx, PageTable4 + (Options.Kernel.EntryPoint shr 12) * 4
      mov       esi, Options.Kernel.EntryPoint shr 12 
 .MapKernelPages:
     
@@ -438,19 +445,19 @@ proc Paging.Init
      shl       eax, 12
      or        eax, 0x003
 
-     mov dword [edi], eax 
+     mov       [edx], eax
+     add       edx, 4
+     stosd 
      inc       esi
-     add       edi, 4
 
      cmp       esi, TSS shr 12
      jb        .MapKernelPages
  xchg bx, bx
-     mov dword [PageDirectory], PageTable1 or 0x003
-
+     mov dword [PageDirectory], PageTable4 or 0x003
      mov dword [PageDirectory + (Options.Kernel.HierHalf shr 22) * 4], PageTable1 or 0x003
 
      
- 
+.Breakin:
 
      mov       eax, PageDirectory
      mov       cr3, eax
@@ -459,17 +466,17 @@ proc Paging.Init
      or        eax, 0x80000000
      mov       cr0, eax
 
-     add       esp, 0xFF000000 - 0x1000
-     add       ebp, 0xFF000000 - 0x1000
+     add       esp, Options.Kernel.Hier.StackHead - 0x1000
+     add       ebp, Options.Kernel.Hier.StackHead - 0x1000
      
-     add       dword [GDTDescriptor + 2], 0xFF000000
-     lgdt      [GDTDescriptor]
+     add       dword [GDTDescriptor + Options.Kernel.Hier.StackHead + 2 - 0x1000], Options.Kernel.Hier.StackHead - 0x1000
+     lgdt      [GDTDescriptor + Options.Kernel.Hier.StackHead - 0x1000]
 
      
-     add       dword [IDTDescriptor + 2], 0xFF000000
-     lidt      [IDTDescriptor]
+     add       dword [IDTDescriptor + Options.Kernel.Hier.StackHead + 2 - 0x1000], Options.Kernel.Hier.StackHead - 0x1000
+     lidt      [IDTDescriptor + Options.Kernel.Hier.StackHead - 0x1000]
 
-     add       dword[ebp + 4], Options.Kernel.HierHalf ;- Options.Kernel.EntryPoint
+     add       dword[ebp + 4], Options.Kernel.HierHalf - Options.Kernel.EntryPoint
      xor       eax, eax
 .UpDate:
      invlpg    [eax]
@@ -477,6 +484,7 @@ proc Paging.Init
      cmp       eax, 1024 * 1024 
      jb        .UpDate
      pop       ebx eax ecx edi ebp
+.EndProc:
      ret
 endp
 
@@ -491,7 +499,9 @@ ProtectedEntry:
 
      
      call      Paging.Init
-org Options.Kernel.HierHalf + $
+org Options.Kernel.HierHalf - Options.Kernel.EntryPoint + $
+     mov       dword[0xFFFFF000], 0
+     invlpg    [0x00000000]  
         
 
      jmp       KERNEL_CODE_SELECTOR:@F
@@ -501,20 +511,19 @@ org Options.Kernel.HierHalf + $
      mov       ds, ax
      mov       es, ax
      mov       ss, ax
-     add       esp, Options.Kernel.HierHalf 
      mov       ax, CPL0_THREAD
      mov       fs, ax
      mov       ax, CPL0_PROCDATA 
      mov       gs, ax
      finit
-
-     mov dword [0xfffff000], 0x00000002
-     
-
+IRQ_B:
      call      IRQ.Init
-     
-     call      TSS.Init
-     
+;TSS_B:     
+     ;call      TSS.Init
+
+.PMMIBreak:     
+
+     stdcall   PMM.Init
      
  ;    stdcall   FramePool.Init1
 
@@ -682,7 +691,7 @@ endp
 proc TSS.Init uses eax
 
      mov       [TSS.SS0], KERNEL_DATA_SELECTOR
-     mov       [TSS.ESP0], 0x200
+     mov       [TSS.ESP0], 0xFF000000
      mov       [TSS.IOPB], TSSend - TSS
      mov       ax, TSS_SELECTOR
      ltr       ax
@@ -770,8 +779,8 @@ block(.data){
 }
 
 
-;include 'Memory/Pager.asm'
-;include 'Memory/FramePool.asm'
+include 'Memory/Pager.asm'
+include 'Memory/PMM.asm'
 ;include 'Memory/GS.asm'
 ;include 'Memory/KernelMemManager.asm'
 
