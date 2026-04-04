@@ -23,6 +23,18 @@ PageStack:
     .Prev dd ?
     end virtual
 
+    virtual at 0 
+PMM.Zone:
+    .LowPhys    dd ?           ; Нижняя граница зоны (физическая)
+    .HighPhys   dd ?           ; Верхняя граница зоны (физическая)
+    .FreeLists  dd 11 dup(0)   ; Buddy-списки этой зоны
+    .Size:
+    end virtual
+
+    PMM.ZONE_DMA    equ 0
+    PMM.ZONE_NORMAL equ 1
+    PMM.ZONES_COUNT equ 2
+
     AL_FL_WRITABLE  equ 0x01
     AL_FL_USERACC   equ 0x02
     AL_FL_NOEXEC    equ 0x04
@@ -56,27 +68,19 @@ block(.text){
 ; @[proc]
 ; .parent:   PMM
 ; .name:     PMM.Init
-; .desc:     Инициализация физического менеджера памяти (PMM).
-;            1. Отображает Bitmap в виртуальное адресное пространство.
-;            2. Размечает Bitmap на основе данных E820 (BIOS Memory Map).
-;            3. Защищает регион ядра и самого Bitmap от случайного выделения.
-;            
-;            Алгоритм:
-;            - Сначала вся память помечается как занятая (0xFF).
-;            - Регионы типа E820_TYPE_FREE_RAM "прорезаются" (бит ставится в 0).
-;            - Регион ядра принудительно блокируется (бит ставится в 1).
-;
-; .in:       PMM.E820   -> адрес таблицы физической памяти от BIOS.
-;            PMM.BitMap -> желаемый виртуальный адрес для размещения битмапа.
-; .out:      eax        -> 0 при успехе.
-; .note:     Критическая функция. Должна вызываться один раз при старте ядра.
-
+; .desc:     Инициализация физического менеджера памяти.
+;            1. Отображает Bitmap в виртуальное пространство.
+;            2. Размечает Bitmap по данным E820 (свободно = 0, занято = 1).
+;            3. Защищает регион ядра и сам Bitmap.
+;            4. Строит начальные Buddy-списки.
+; .in:       PMM.E820 -> адрес таблицы.
+; .out:      eax -> 0 при успехе.
 proc PMM.Init uses ebx esi edi
     pushf
     cld
 
     mov edi, 0xFFC00000 + ((PMM.BitMap shr 22) * 1000h)
-    stdcall PMM.Map, edi, PageTable4, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+    stdcall PMM.UnsaveMap, edi, PageTable4, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
 
     xor eax, eax
     mov ecx, 1000h / 4
@@ -85,7 +89,7 @@ proc PMM.Init uses ebx esi edi
     mov esi, PMM.BitMap
     mov edi, BitMapPage
 .MapPages:
-    stdcall PMM.Map, esi, edi, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
+    stdcall PMM.UnsaveMap, esi, edi, AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
     mov     eax, 1000h
     add     esi, eax
     add     edi, eax
@@ -99,8 +103,19 @@ proc PMM.Init uses ebx esi edi
     push    edi
     push    edi
     rep stosd 
-    pop     edi
+
+    mov edi, PMM.Zones 
+    ; Зона 0 (DMA): 0 - 16МБ
+    mov [edi + PMM.Zone.LowPhys], 0
+    mov [edi + PMM.Zone.HighPhys], 0x01000000
     
+    ; Зона 1 (Normal): 16МБ - до конца битмапа
+    add edi, PMM.Zone.Size
+    mov [edi + PMM.Zone.LowPhys], 0x01000000
+    mov [edi + PMM.Zone.HighPhys], 0xFFFFFFFF
+
+    pop     edi
+
     mov     esi, PMM.E820 + 4
     mov     ecx, [esi - 4]
     test    ecx, ecx
@@ -154,7 +169,7 @@ endp
 
 ; @[proc]
 ; .parent:  PMM
-; .name:    PMM.Map
+; .name:    PMM.UnsaveMap
 ; .desc:    Тупой маппинг страницы для первых этампов 
 ;           Флаги страниц:
 ;           | AL_FL_WRITABLE | 0x01 | можно ли писать                                                   |
@@ -168,7 +183,7 @@ endp
 ;           todophys -> byte count of mapped region
 ;           flags    -> флаги страницы (см в описании)
 ; .out:     eax      -> виртуальный адрес при успехе, -1 при неудаче 
-proc PMM.Map uses ebx, todovirt, todophys, flags:DWORD
+proc PMM.UnsaveMap uses ebx, todovirt, todophys, flags:DWORD
     
     mov     ebx, [todovirt]
     shr     ebx, 12
@@ -236,6 +251,7 @@ proc PMM.Map uses ebx, todovirt, todophys, flags:DWORD
     ret    
 endp
 
+
 ; @[proc]
 ; .parent:   PMM
 ; .name:     PMM.InitLists
@@ -247,15 +263,17 @@ endp
 ; .note:     Вызывается в самом конце PMM.Init, когда битмап уже готов.
 proc PMM.InitLists uses ebx esi edi
     xor     esi, esi
-
     mov     ecx, ((PMM.BitMap.End - PMM.BitMap) shl 3)
- @@:
+
+ .MainLoop:
     push    ecx
+
     stdcall PMM.CheckIsAdd, 10, esi
-    pop     ecx
-    add     esi, 1024
-    cmp     esi, ecx
-    jb      @B
+
+    pop ecx
+    add esi, 1024           ; Прыгаем на 4МБ (Buddy Max Order)
+    cmp esi, ecx
+    jb .MainLoop
  .EndProc:    
     ret
 endp 
@@ -272,7 +290,7 @@ endp
 ; .in:       order    -> текущий порядок блока (0..10)
 ;            bitIndex -> индекс первой страницы в проверяемом блоке
 ; .out:      eax      -> void
-proc PMM.CheckIsAdd uses ebx edi, order, bitIndex 
+proc PMM.CheckIsAdd uses ebx edi, order, bitIndex
     mov     edx, 1
     mov     ecx, [order]
     shl     edx, cl
@@ -340,6 +358,34 @@ proc PMM.CheckIsAdd uses ebx edi, order, bitIndex
     ret
 endp 
 
+
+; @[proc]
+; .parent:   PMM
+; .name:     PMM.PushFree
+; .desc:     Поиск структуры зоны по физическому адресу
+; .in:       eax -> физический адрес
+; .out:      eax -> указатель на PMM.Zone (или 0)
+proc PMM.GetZoneByAddr uses edx ecx, phys_addr
+    mov     eax, [phys_addr]
+    mov     edx, PMM.Zones
+    mov     ecx, PMM.ZONES_COUNT
+ .ZoneLoop:
+    cmp     eax, [edx + PMM.Zone.HighPhys]
+    jae     .Skip
+    cmp     eax, [edx + PMM.Zone.LowPhys]
+    jae     .Found 
+  .Skip:
+    add     edx, PMM.Zone.Size
+    loop    .ZoneLoop
+    xor     eax, eax
+    jmp     .EndProc
+ .Found:
+    mov     eax, edx
+ .EndProc:
+    ret
+endp
+
+
 ; @[proc]
 ; .parent:   PMM
 ; .name:     PMM.PushFree
@@ -349,20 +395,27 @@ endp
 ; .out:      eax       -> void (eax = -1 при ошибке маппинга)
 ; .note:     Использует PMM.Page.Window для записи указателей в физ. память.
 ;            ВНИМАНИЕ: затирает текущий маппинг в окне при обращении к следующему элементу.
-proc PMM.PushFree uses ebx, pageIndex, pageOrder
-    stdcall PMM.Map, PMM.Page.Window, [pageIndex], AL_FL_WRITABLE
+proc PMM.PushFree uses ebx edi, pageIndex, pageOrder
+    stdcall PMM.GetZoneByAddr, [pageIndex]
+    test    eax, eax
+    jz      .EndProc       
+    xchg    edi, eax
+    lea     edi, [edi + PMM.Zone.FreeLists]
+
+    stdcall PMM.UnsaveMap, PMM.Page.Window, [pageIndex], AL_FL_WRITABLE
     cmp     eax, -1
-    je      .EndProc
+    je      .EndProc    
+
     mov     ebx, [pageOrder]
-    mov     eax, [PMM.FreeLists + ebx*4]
+    mov     eax, [edi + ebx*4]
     mov     edx, [pageIndex]
-    mov     [PMM.FreeLists + ebx*4], edx
+    mov     [edi + ebx*4], edx
     mov     [PMM.Page.Window + PageStack.Next], eax
     mov     [PMM.Page.Window + PageStack.Prev], 0
     test    eax, eax
     jz      .EndProc
 
-    stdcall PMM.Map, PMM.Page.Window, eax, AL_FL_WRITABLE
+    stdcall PMM.UnsaveMap, PMM.Page.Window, eax, AL_FL_WRITABLE
     cmp     eax, -1
     je      .EndProc
     mov     eax, [pageIndex]
@@ -373,35 +426,31 @@ proc PMM.PushFree uses ebx, pageIndex, pageOrder
     ret
 endp 
 
+
 ; @[proc]
 ; .parent:   PMM
 ; .name:     PMM.PopFree
-; .desc:     Извлечение первого доступного блока из списка заданного порядка.
+; .desc:     Извлечение первого доступного блока из списка заданного порядка и заданной зоны.
 ; .in:       pageOrder -> порядок списка (0..10)
+;            zone      -> указатель на структуру PMM.Zone
 ; .out:      eax       -> физический адрес блока или 0, если список пуст
-; .note:     Автоматически очищает указатели Next/Prev в извлеченном блоке.
-proc PMM.PopFree uses ebx edi, pageOrder
+proc PMM.PopFree uses ebx edi esi, pageOrder, zone
+    mov     esi, [zone]
+    lea     esi, [esi + PMM.Zone.FreeLists]
+    
     mov     ebx, [pageOrder]
-    mov     eax, [PMM.FreeLists + ebx*4]
+    mov     eax, [esi + ebx*4]
     push    eax
-    stdcall PMM.Map, PMM.Page.Window, eax, AL_FL_WRITABLE
+    test    eax, eax 
+    jz      .Err
+    stdcall PMM.UnsaveMap, PMM.Page.Window, eax, AL_FL_WRITABLE
     cmp     eax, -1
     je      .Err
     
     mov     edx, [PMM.Page.Window + PageStack.Next]
-    mov     [PMM.FreeLists + ebx*4], edx
-
+    mov     [esi + ebx*4], edx
     
-    mov     edi, PMM.Page.Window
-    mov     eax, 1024
-    mov     ecx, [pageOrder]
-    shl     eax, cl
-    xchg    eax, ecx
-    xor     eax, eax
-    rep stosd
-
-    
-    stdcall PMM.Map, PMM.Page.Window, edx, AL_FL_WRITABLE
+    stdcall PMM.UnsaveMap, PMM.Page.Window, edx, AL_FL_WRITABLE
     cmp     eax, -1
     je      .Err
 
@@ -416,6 +465,7 @@ proc PMM.PopFree uses ebx edi, pageOrder
     ret
 endp 
 
+
 ; @[proc]
 ; .parent:   PMM
 ; .name:     PMM.PickFree
@@ -426,43 +476,39 @@ endp
 ; .out:      eax       -> void
 ; .note:     Требует осторожности при маппинге: функция последовательно переключает
 ;            PMM.Page.Window между текущим, следующим и предыдущим элементами
-proc PMM.PickFree uses edi esi, pageIndex, pageOrder
-    stdcall PMM.Map, PMM.Page.Window, [pageIndex], AL_FL_WRITABLE
+proc PMM.PickFree uses edi esi ebx, pageIndex, pageOrder
+    stdcall PMM.GetZoneByAddr, [pageIndex]
+    test    eax, eax
+    jz      .EndProc
+    xchg    ebx, eax
+    lea     ebx, [ebx + PMM.Zone.FreeLists]
+
+    stdcall PMM.UnsaveMap, PMM.Page.Window, [pageIndex], AL_FL_WRITABLE
     cmp     eax, -1
     je      .EndProc
 
     mov     esi, [PMM.Page.Window + PageStack.Next]
     mov     edi, [PMM.Page.Window + PageStack.Prev]
-    
-    push    edi
-    mov     edi, PMM.Page.Window
-    mov     eax, 1024
-    mov     ecx, [pageOrder]
-    shl     eax, cl
-    xchg    eax, ecx
-    xor     eax, eax
-    rep stosd
-    pop     edi
 
     test    esi, esi
     jz      @F  
-    stdcall PMM.Map, PMM.Page.Window, esi, AL_FL_WRITABLE 
+    stdcall PMM.UnsaveMap, PMM.Page.Window, esi, AL_FL_WRITABLE 
     mov     [PMM.Page.Window + PageStack.Prev], edi
     cmp     eax, -1
     je      .EndProc
 
-@@:
+ @@:
     test    edi, edi
     jnz     @F
     
     mov     eax, [pageOrder]
     mov     edx, [pageIndex]
-    cmp     [PMM.FreeLists + eax*4], edx
+    cmp     [ebx + eax*4], edx
     jne     @F
-    mov     [PMM.FreeLists + eax*4], esi
+    mov     [ebx + eax*4], esi
     jmp     .EndProc    
-@@:    
-    stdcall PMM.Map, PMM.Page.Window, edi, AL_FL_WRITABLE 
+ @@:    
+    stdcall PMM.UnsaveMap, PMM.Page.Window, edi, AL_FL_WRITABLE 
     mov     [PMM.Page.Window + PageStack.Next], esi
     cmp     eax, -1
     je      .EndProc
@@ -471,10 +517,188 @@ proc PMM.PickFree uses edi esi, pageIndex, pageOrder
     ret
 endp 
 
+
+; @[proc]
+; .parent:   PMM
+; .name:     PMM.ZeroPage
+; .desc:     Обнуление физического блока памяти заданного порядка.
+;            Использует SSE (XMM) и Non-Temporal инструкции для скорости.
+; .in:       pageIndex -> физический адрес начала блока
+;            pageOrder -> порядок блока (0=4КБ, 1, 2...)
+; .out:      void
+; .note:     Требует, чтобы физический адрес был выровнен по 16 байт.
+proc PMM.ZeroPage uses edi pageIndex, pageOrder
+    stdcall PMM.UnsaveMap, PMM.Page.Window, [pageIndex], AL_FL_WRITABLE
+    
+    pxor    xmm0, xmm0        
+    mov     edi, [pageIndex]
+    mov     eax, 4096 / 16     ; 256 итераций по 16 байт
+    mov     ecx, [pageOrder]
+    shl     eax, cl
+ .ZerodLoop:
+    movntps [edi], xmm0    
+    add     edi, 16
+    loop    .ZerodLoop
+    ret
+endp
+
+
+; @[proc]
+; .parent:   PMM
+; .name:     PMM.Alloc
+; .desc:     Выделение блока физической памяти заданного порядка.
+; .in:       order -> желаемый порядок (0 = 4КБ, 10 = 4МБ)
+;            zoneId -> ID зоны, с которой начать поиск (напр. PMM.ZONE_NORMAL)
+; .out:      eax   -> физический адрес блока или 0, если памяти нет
+proc PMM.Alloc uses ebx esi edi, order, zoneID
+    mov     esi, [zoneID]
+
+ .LoopZones:
+    
+    mov     eax, PMM.Zone.Size
+    imul    eax, esi
+    add     eax, PMM.Zones
+    xchg    edi, eax
+
+    mov     ebx, [order]
+    cmp     ebx, 11
+    jae      .Failed    
+
+  .FindInZone: 
+    stdcall PMM.PopFree, ebx, edi
+    test    eax, eax
+    jnz     .Found
+    
+    inc     ebx
+    cmp     ebx, 11        
+    jb      .FindInZone
+
+    test    esi, esi
+    jz      .Failed         
+    dec     esi
+    jmp     .LoopZones
+
+ .Found:
+  .SplitLoop:
+    cmp     ebx, [order]
+    je      .MarkBitmap     
+
+    dec     ebx             
+    
+    mov     edx, 1
+    mov     ecx, ebx
+    shl     edx, cl         
+    shl     edx, 12         
+    
+    lea     edx, [eax + edx]
+    
+    push    eax 
+    stdcall PMM.PushFree, edx, ebx
+    pop     eax
+    
+    jmp     .SplitLoop
+    
+ .MarkBitmap:
+    push    eax
+    
+    mov     ebx, eax
+    shr     ebx, 12         
+    
+    mov     eax, 1
+    mov     ecx, [order]
+    shl     eax, cl       
+    xchg    eax, ecx
+
+  .MarkLoop:
+    bts     [PMM.BitMap], ebx
+    inc     ebx
+    loop    .MarkLoop
+    
+    pop     eax
+    jmp     .EndProc
+
+ .Failed:
+    xor     eax, eax
+ .EndProc:
+    ret
+endp
+
+
+; @[proc]
+; .parent:   PMM
+; .name:     PMM.Free
+; .desc:     Освобождение блока и попытка слияния с соседями.
+; .in:       pageIndex -> физический адрес
+;            pageOrder -> порядок блока
+proc PMM.Free uses ebx esi edi, pageIndex, pageOrder
+    mov     ebx, [pageOrder]
+    mov     esi, [pageIndex]
+
+ .UnmarkBitmap:
+    mov     edi, esi
+    shr     edi, 12                 
+    
+    mov     eax, 1
+    mov     ecx, ebx
+    shl     eax, cl               
+    xchg    eax, ecx
+
+  .UnmarkLoop:
+    btr     [PMM.BitMap], edi
+    inc     edi
+    loop    .UnmarkLoop
+    
+.CoalesceLoop:    
+    cmp     ebx, 10               
+    je      .Done
+
+    mov     eax, 1
+    mov     ecx, ebx
+    shl     eax, cl
+    xchg    eax, ecx
+
+    mov     edx, ecx
+    shl     edx, 12                
+    
+    mov     eax, esi                
+    xor     eax, edx                
+    
+    push    ecx
+    mov     edi, eax
+    shr     edi, 12                 
+     
+ .CheckBuddyLoop:
+    bt      [PMM.BitMap], edi
+    jc      .BuddyBusy              
+    inc     edi
+    loop    .CheckBuddyLoop
+    pop     ecx
+    
+    
+    push    edx eax
+    stdcall PMM.PickFree, eax, ebx
+    pop     eax edx
+    
+
+    cmp     esi, eax 
+    jb      .NextLevel
+    mov     esi, eax               
+
+ .NextLevel:
+    inc     ebx                     
+    jmp     .CoalesceLoop           
+
+ .BuddyBusy:
+    pop     ecx
+ .Done:
+    
+    stdcall PMM.PushFree, esi, ebx
+    ret
+endp
+
 }
 
 
-
 block(.initData){
-    PMM.FreeLists dd 11 dup 0      
+    PMM.Zones db (PMM.ZONES_COUNT * PMM.Zone.Size)    
 }
