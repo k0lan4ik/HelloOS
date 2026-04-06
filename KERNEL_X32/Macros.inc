@@ -43,6 +43,13 @@ else
 end if
 }
 
+macro ustr0 name, content& {
+    common
+        name db content
+        name#.length = ($ - name)
+        db 0
+} 
+
 macro displayPnt
 {
     a = 8

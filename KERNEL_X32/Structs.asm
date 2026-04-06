@@ -1,4 +1,5 @@
 block(.structs){
+Kernel.Executable.End = $
 virtual at $ - (Options.Kernel.HierHalf - Options.Kernel.EntryPoint)
 align     1000h
 TSS:
@@ -50,8 +51,8 @@ PageTable2:
      db        1000h dup ?  
 PageTable3:
      db        1000h dup ?
-PageTable4:
-     db        1000h dup ? 
+;PageTable4:
+ ;    db        1000h dup ? 
 BitMapPage:  
 end virtual
      

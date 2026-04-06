@@ -54,7 +54,8 @@ Options.Kernel.StackHead  equ     Options.Kernel.IDT
 Options.Kernel.HierHalf   equ     $E0000000
 
 
-Options.Kernel.Hier.StackHead equ 0xFB000000
+Options.Kernel.Hier.IDT_GDT_E820 equ 0xFFB00000
+Options.Kernel.Hier.StackHead    equ 0xFFC00000
 }
 
 include 'Structs.asm'
@@ -429,15 +430,15 @@ proc Paging.Init
      
      mov       dword [PageDirectory + (0xFFC00000 shr 22) * 4], PageDirectory or 0x019 ;(Present, Read/Write, Global)
      
-     mov       dword [PageTable2],  0x01000 or 0x003
-     ;mov       dword [PageTable2 + 4], 0x01000 or 0x003 
-     mov       dword [PageDirectory + (Options.Kernel.Hier.StackHead shr 22) * 4], PageTable2 or 0x019 ; (Present, Read/Write, Global)
+     mov       dword [PageTable2 + ((Options.Kernel.Hier.IDT_GDT_E820 shr 12) and 0x3FF) * 4],  0x01000 or 0x003
+     mov       dword [PageTable2 + 1023 * 4], 0x00 or 0x003
+     mov       dword [PageDirectory + (Options.Kernel.Hier.IDT_GDT_E820 shr 22) * 4], PageTable2 or 0x019 ; (Present, Read/Write, Global)
 
-     mov       dword [PageTable3 + 1023 * 4], 0x00 or 0x003
-     mov       dword [PageDirectory + ((Options.Kernel.Hier.StackHead - 0x1000) shr 22) * 4], PageTable3 or 0x019 ; (Present, Read/Write, Global)
+     
+     ;mov       dword [PageDirectory + ((Options.Kernel.Hier.StackHead - 0x1000) shr 22) * 4], PageTable3 or 0x019 ; (Present, Read/Write, Global)
      
      mov       edi, PageTable1
-     mov       edx, PageTable4 + (Options.Kernel.EntryPoint shr 12) * 4
+     mov       edx, PageTable3 + (Options.Kernel.EntryPoint shr 12) * 4
      mov       esi, Options.Kernel.EntryPoint shr 12 
 .MapKernelPages:
     
@@ -453,7 +454,7 @@ proc Paging.Init
      cmp       esi, TSS shr 12
      jb        .MapKernelPages
  xchg bx, bx
-     mov dword [PageDirectory], PageTable4 or 0x003
+     mov dword [PageDirectory], PageTable3 or 0x003
      mov dword [PageDirectory + (Options.Kernel.HierHalf shr 22) * 4], PageTable1 or 0x003
 
      
@@ -469,12 +470,12 @@ proc Paging.Init
      add       esp, Options.Kernel.Hier.StackHead - 0x1000
      add       ebp, Options.Kernel.Hier.StackHead - 0x1000
      
-     add       dword [GDTDescriptor + Options.Kernel.Hier.StackHead + 2 - 0x1000], Options.Kernel.Hier.StackHead - 0x1000
-     lgdt      [GDTDescriptor + Options.Kernel.Hier.StackHead - 0x1000]
+     add       dword [GDTDescriptor + Options.Kernel.Hier.IDT_GDT_E820 + 2 - 0x1000], Options.Kernel.Hier.IDT_GDT_E820 - 0x1000
+     lgdt      [GDTDescriptor + Options.Kernel.Hier.IDT_GDT_E820 - 0x1000]
 
      
-     add       dword [IDTDescriptor + Options.Kernel.Hier.StackHead + 2 - 0x1000], Options.Kernel.Hier.StackHead - 0x1000
-     lidt      [IDTDescriptor + Options.Kernel.Hier.StackHead - 0x1000]
+     add       dword [IDTDescriptor + Options.Kernel.Hier.IDT_GDT_E820 + 2 - 0x1000], Options.Kernel.Hier.IDT_GDT_E820 - 0x1000
+     lidt      [IDTDescriptor + Options.Kernel.Hier.IDT_GDT_E820 - 0x1000]
 
      add       dword[ebp + 4], Options.Kernel.HierHalf - Options.Kernel.EntryPoint
      xor       eax, eax
@@ -524,10 +525,6 @@ IRQ_B:
 .PMMIBreak:     
 
      stdcall   PMM.Init
-     
- ;    stdcall   FramePool.Init1
-
-     
      ;Инициализация страници под procdata for this processor
  ;    stdcall   FramePool.GetFreePage
  ;    stdcall   Pager.MapPage, 0xFF000, eax,  AL_FL_WRITABLE or AL_FL_GLOBAL or AL_FL_NOEXEC
@@ -779,11 +776,13 @@ block(.data){
 }
 
 
-include 'Memory/Pager.asm'
+
 include 'Memory/PMM.asm'
+;include 'Memory/Pager.asm'
 ;include 'Memory/GS.asm'
 ;include 'Memory/KernelMemManager.asm'
 
+include 'Threads/Sync.asm'
 ;include 'Threads/Mutex.asm'
 ;include 'Threads/Process.asm'
 ;include 'Threads/ProcessManager.asm'
